@@ -89,6 +89,7 @@
   .ph-top { display:flex; justify-content:space-between; align-items:center; gap:6px; }
 
   .pill.y { background:var(--yellow); }
+  .pill.xbtn { width:32px; height:32px; padding:0; display:grid; place-items:center; flex:none; }
   .pill { font-family:"IBM Plex Sans"; font-weight:700; font-size:13px; padding:5px 10px; border:2px solid var(--ink); border-radius:999px; background:#fff; box-shadow:2px 2px 0 var(--ink); white-space:nowrap; }
   .chaps { display:flex; gap:6px; margin-top:10px; }
   .chap { flex:1; border:2px solid var(--ink); border-radius:10px; padding:5px 7px 6px; font-family:"Bricolage Grotesque"; font-weight:800; font-size:13px; box-shadow:2px 2px 0 var(--ink); transition:background .4s; }
@@ -99,7 +100,7 @@
   .bg-timer b { margin-left:auto; font-family:"Bricolage Grotesque"; font-size:16px; }
   .bg-timer .steam { animation:steam 1.6s ease-in-out infinite; }
   @keyframes steam { 50% { transform:translateY(-2px); opacity:.6; } }
-  .cook { margin-top:16px; padding:22px 14px 14px; position:relative; border-radius:16px; border:2.5px solid var(--ink); background:#fff; box-shadow:4px 4px 0 var(--ink); }
+  .cook { margin-top:24px; padding:22px 14px 14px; position:relative; border-radius:16px; border:2.5px solid var(--ink); background:#fff; box-shadow:4px 4px 0 var(--ink); }
   .cook .sticker { position:absolute; top:-15px; left:12px; font-size:13px; padding:3px 11px; transition:background .4s; }
   .pic { aspect-ratio:360/250; width:100%; border-radius:10px; overflow:hidden; background:var(--cream); border:2px solid var(--ink); position:relative; }
   .pic iframe { width:100%; height:100%; border:0; display:block; pointer-events:none; }
@@ -311,7 +312,7 @@
       <div class="phone">
         <div class="notch"></div>
         <div class="ph-top">
-          <span class="pill">✕</span>
+          <span class="pill xbtn" aria-label="Close"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 2 L10 10 M10 2 L2 10" stroke="#151515" stroke-width="2.4" stroke-linecap="round"/></svg></span>
           <span class="pill" id="stepNo">Step 3 of 12</span>
           <span class="pill y" id="leftNo">24 min left</span>
         </div>
@@ -379,7 +380,7 @@
   </div>
 </section>
 
-<section id="how" style="padding-top:0">
+<section id="how" style="padding-top:clamp(48px, 7vw, 72px)">
   <div class="wrap">
     <span class="sticker b">How it works</span>
     <h2 class="hd">Three steps to dinner.</h2>
@@ -622,9 +623,9 @@ const lane = (id, segs) => {
   $(id).innerHTML = segs.map(([from, len, label, cls], k) =>
     `<div class="seg ${cls}" style="left:${from / 38 * 100}%;width:${len / 38 * 100}%;transition-delay:${0.15 * k + (id === "lane1" ? 0 : 1.2)}s">${label}</div>`).join("");
 };
-lane("lane1", [[0, 4, "Chop", "y"], [4, 3, "Garlic", "y"], [7, 10, "Wait for water", "m"], [17, 11, "Pasta", "b"], [28, 10, "Sauce", "p"]]);
-lane("lane2a", [[0, 10, "Water heats", "m"], [10, 11, "Pasta", "b"], [21, 3, "Toss", "g"]]);
-lane("lane2b", [[0, 4, "Chop", "y"], [4, 3, "Garlic", "y"], [7, 10, "Sauce", "p"]]);
+lane("lane1", [[0, 7, "Chop", "y"], [7, 10, "Waiting", "m"], [17, 11, "Pasta", "b"], [28, 10, "Sauce", "p"]]);
+lane("lane2a", [[0, 10, "Water heats", "m"], [10, 14, "Pasta", "b"]]);
+lane("lane2b", [[0, 7, "Chop", "y"], [7, 10, "Sauce", "p"]]);
 
 // ---------- Together: jobs swap like a real cook ----------
 const jobs = [["Chop the veggies", "Brown the beef"], ["Grate the cheese", "Stir in the sauce"], ["Set the table", "Plate it up"]];

@@ -120,7 +120,7 @@
   .hero .peek > div { animation:peekUp 4s ease-in-out infinite; }
   @keyframes peekUp { 0%,100% { transform:translateY(112px); } 20%,70% { transform:translateY(0) rotate(4deg); } 28% { transform:translateY(-6px) rotate(4deg); } }
   .float-note { position:absolute; z-index:3; font-family:"Bricolage Grotesque"; font-weight:800; font-size:15px; padding:8px 12px; border-radius:12px; border:2.5px solid var(--ink); box-shadow:3px 3px 0 var(--ink); }
-  .float-note.n1 { left:max(-6px, calc(50% - 250px)); top:24px; transform:rotate(-6deg); animation:bob 3s ease-in-out infinite; }
+  .float-note.n1 { left:max(-6px, calc(50% - 250px)); top:calc(var(--pt) - 46px); transform:rotate(-6deg); animation:bob 3s ease-in-out infinite; }
   .float-note.n2 { right:max(-6px, calc(50% - 240px)); bottom:6px; transform:rotate(5deg); animation:bob 3.4s .6s ease-in-out infinite; }
   @keyframes bob { 50% { translate:0 -8px; } }
   @media (max-width:420px) { .float-note { font-size:13px; } }
@@ -324,8 +324,8 @@
     .how .box, .blog, .feat, .pics .box, .phones2 .box, .mini, .signup { transform:none !important; }
     .in .mini { transform:none; }
     .phone { transform:rotate(1deg); }
-    .hero .wrap { gap:8px; }
-    .phone-wrap { --pt:64px; padding-bottom:48px; }
+    .phone-wrap { --pt:124px; padding-bottom:48px; }
+    .hero .wrap { gap:0; }
     .how { gap:30px; margin-top:34px; }
     .how .tile { height:130px; }
     .feats { gap:14px; margin-top:30px; }

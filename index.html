@@ -261,6 +261,58 @@
   .final .celebrate iframe { width:100%; height:100%; border:0; pointer-events:none; }
   .final .btn { background:#fff; color:var(--ink); }
 
+  /* Waitlist */
+  .wl-big { font-size:clamp(22px, 3vw, 28px); padding:18px 30px; border-radius:20px; box-shadow:6px 6px 0 var(--ink); }
+  .wl-big:active { transform:translate(6px,6px); }
+  .wl-big .wiggle { display:inline-block; animation:nudge 2.4s ease-in-out infinite; }
+  @keyframes nudge { 0%,70%,100% { transform:translateX(0); } 80% { transform:translateX(6px); } 90% { transform:translateX(0); } }
+  .store-soon { display:inline-flex; align-items:center; gap:8px; padding:10px 16px; border:var(--line) solid var(--ink); border-radius:14px; background:#fff; box-shadow:3px 3px 0 var(--ink); text-decoration:none; font-weight:700; font-size:14px; line-height:1.1; }
+  .store-soon small { display:block; font-weight:600; font-size:11px; color:var(--soft); }
+  .mid-cta { margin-top:32px; display:flex; flex-wrap:wrap; align-items:center; gap:14px; }
+  .mid-cta span { font-weight:600; color:var(--soft); font-size:16px; }
+  .wl-form { display:grid; gap:14px; text-align:left; }
+  .wl-form label { font-family:"Bricolage Grotesque"; font-weight:800; font-size:17px; display:block; margin-bottom:6px; }
+  .wl-form input { width:100%; font:600 18px "IBM Plex Sans",system-ui,sans-serif; padding:14px 16px; border:var(--line) solid var(--ink); border-radius:14px; background:#fff; color:var(--ink); box-shadow:3px 3px 0 var(--ink); outline:none; -webkit-appearance:none; }
+  .wl-form input:focus { background:var(--cream); box-shadow:4px 4px 0 var(--red); }
+  .chips { display:flex; flex-wrap:wrap; gap:8px; }
+  .chips button { font:700 15px "IBM Plex Sans",system-ui,sans-serif; color:var(--ink); padding:8px 14px; border:2px solid var(--ink); border-radius:999px; background:#fff; box-shadow:2px 2px 0 var(--ink); cursor:pointer; }
+  .chips button[aria-pressed="true"] { background:var(--yellow); transform:rotate(-2deg); }
+  .wl-form .other { display:none; margin-top:8px; }
+  .wl-form .other.show { display:block; }
+  .wl-form .send { justify-content:center; width:100%; margin-top:4px; }
+  .wl-form .send[disabled] { opacity:.6; pointer-events:none; }
+  .wl-err { color:#C2321A; font-weight:700; font-size:15px; min-height:1px; }
+  .wl-fine { font-size:13px; color:var(--soft); text-align:center; }
+  .wl-done { text-align:center; display:none; }
+  .wl-done.show { display:block; }
+  .wl-done .spot { font-family:"Bricolage Grotesque"; font-weight:800; font-size:clamp(40px, 9vw, 64px); line-height:1; margin:6px 0 8px; }
+  .wl-done .chefbox { width:130px; margin:0 auto; animation:party 1.2s ease-in-out infinite; }
+  @keyframes party { 0%,100% { transform:translateY(0); } 40% { transform:translateY(-16px) rotate(-4deg); } 60% { transform:translateY(0) scaleY(.94); } }
+  .wl-done .btn { margin-top:16px; }
+  /* the inline sign-up card */
+  .signup { display:grid; grid-template-columns:1fr 1fr; gap:clamp(24px, 5vw, 56px); align-items:center; padding:clamp(22px, 4vw, 44px); background:var(--yellow); }
+  .signup h2 { margin-top:10px; }
+  .signup .lead { color:var(--ink); }
+  .signup .formcard { padding:clamp(18px, 3vw, 28px); }
+  @media (max-width:860px) { .signup { grid-template-columns:1fr; } }
+  /* pop-up sheet */
+  .sheet-bg { position:fixed; inset:0; z-index:50; background:rgba(21,21,21,.45); display:none; align-items:center; justify-content:center; padding:16px; }
+  .sheet-bg.open { display:flex; animation:fade .2s; }
+  @keyframes fade { from { opacity:0; } }
+  .sheet { width:min(460px, 100%); max-height:calc(100dvh - 32px); overflow:auto; padding:26px 22px 22px; position:relative; background:var(--paper);
+           background-image:radial-gradient(var(--dot) 1.2px, transparent 1.3px); background-size:18px 18px; animation:sheetIn .35s cubic-bezier(.3,1.4,.5,1); }
+  @keyframes sheetIn { from { transform:translateY(40px) rotate(2deg); opacity:0; } }
+  .sheet h3 { font-size:30px; margin:10px 0 4px; }
+  .sheet .sub { color:var(--soft); margin-bottom:18px; font-size:16px; }
+  .sheet .close { position:absolute; top:14px; right:14px; width:38px; height:38px; display:grid; place-items:center; border:var(--line) solid var(--ink); border-radius:50%; background:#fff; box-shadow:2px 2px 0 var(--ink); cursor:pointer; }
+  .sheet .peeker { position:absolute; top:-58px; left:24px; width:84px; height:60px; overflow:hidden; pointer-events:none; }
+  @media (max-width:560px) { .sheet-bg { align-items:flex-end; padding:0; } .sheet { width:100%; border-radius:22px 22px 0 0; border-bottom:none; padding-bottom:calc(22px + env(safe-area-inset-bottom)); max-height:92dvh; } }
+  /* phone sticky bar */
+  .sticky-cta { position:fixed; left:12px; right:12px; bottom:calc(12px + env(safe-area-inset-bottom)); z-index:30; display:none; transform:translateY(140%); transition:transform .35s cubic-bezier(.3,1.3,.5,1); }
+  .sticky-cta .btn { width:100%; justify-content:center; }
+  .sticky-cta.show { transform:none; }
+  @media (max-width:760px) { .sticky-cta { display:block; } footer { padding-bottom:110px; } }
+
   footer { padding:40px 0 60px; font-size:15px; color:var(--soft); }
   footer .wrap { display:flex; flex-wrap:wrap; gap:16px 28px; justify-content:space-between; align-items:center; }
   footer nav { all:unset; display:flex; gap:20px; flex-wrap:wrap; }
@@ -279,7 +331,7 @@
     <div class="links">
       <a class="t" href="#how">How it works</a>
       <a class="t" href="#together">Cook together</a>
-      <a class="btn r" href="/download/" data-download="nav">Get the app</a>
+      <a class="btn r" href="#waitlist" data-waitlist="nav">Join the waitlist</a>
     </div>
   </div>
 </nav>
@@ -292,12 +344,13 @@
       <svg class="squig" viewBox="0 0 340 22" aria-hidden="true"><path d="M4 14 C 30 2, 50 22, 78 10 S 128 2, 156 14 S 206 22, 234 9 S 290 2, 336 12" fill="none" stroke="#F0643C" stroke-width="6" stroke-linecap="round"/></svg>
       <p class="lead">Paste any recipe. Tempo puts the steps in the fastest order and walks you through them <b>one at a time</b>, with timers, pictures, and "while the water boils, do this."</p>
       <div class="ctas">
-        <a class="btn" style="background:var(--ink);color:#fff" href="/download/" data-download="hero">
-          <svg width="26" height="30" viewBox="0 0 24 28" fill="#fff" aria-hidden="true"><path d="M19.6 14.9c0-3.4 2.8-5 2.9-5.1-1.6-2.3-4-2.6-4.9-2.7-2.1-.2-4.1 1.2-5.1 1.2-1.1 0-2.7-1.2-4.4-1.2C5.8 7.2 3.7 8.5 2.5 10.5c-2.4 4.2-.6 10.3 1.7 13.7 1.1 1.7 2.5 3.5 4.2 3.4 1.7-.1 2.3-1.1 4.4-1.1 2 0 2.6 1.1 4.4 1.1 1.8 0 3-1.7 4.1-3.3 1.3-1.9 1.8-3.8 1.8-3.9-.1 0-3.5-1.3-3.5-5.5zM16.3 4.9c.9-1.1 1.6-2.7 1.4-4.2-1.3.1-3 .9-3.9 2-.9 1-1.6 2.6-1.4 4.1 1.5.1 3-.8 3.9-1.9z"/></svg>
-          <span class="two"><small>Download on the</small>App Store</span>
+        <a class="btn r wl-big" href="#waitlist" data-waitlist="hero">Join the waitlist <span class="wiggle">→</span></a>
+        <a class="store-soon" href="/download/" data-download="hero">
+          <svg width="18" height="21" viewBox="0 0 24 28" fill="#151515" aria-hidden="true"><path d="M19.6 14.9c0-3.4 2.8-5 2.9-5.1-1.6-2.3-4-2.6-4.9-2.7-2.1-.2-4.1 1.2-5.1 1.2-1.1 0-2.7-1.2-4.4-1.2C5.8 7.2 3.7 8.5 2.5 10.5c-2.4 4.2-.6 10.3 1.7 13.7 1.1 1.7 2.5 3.5 4.2 3.4 1.7-.1 2.3-1.1 4.4-1.1 2 0 2.6 1.1 4.4 1.1 1.8 0 3-1.7 4.1-3.3 1.3-1.9 1.8-3.8 1.8-3.9-.1 0-3.5-1.3-3.5-5.5zM16.3 4.9c.9-1.1 1.6-2.7 1.4-4.2-1.3.1-3 .9-3.9 2-.9 1-1.6 2.6-1.4 4.1 1.5.1 3-.8 3.9-1.9z"/></svg>
+          <span><small>Coming soon to the</small>App Store</span>
         </a>
-        <span class="free">Free to start. iPhone.</span>
       </div>
+      <p class="free" style="margin-top:14px">Be first to cook with Tempo. Free on iPhone.</p>
       <div class="proof">
         <span class="sticker y">Works with any recipe site</span>
         <span class="sticker g">Real recipes, never rewritten</span>
@@ -426,6 +479,7 @@
       <div class="ruler"><span>0</span><span>10</span><span>20</span><span>30</span><span>38 min</span></div>
       <span class="sticker r saved">14 minutes sooner</span>
     </div>
+    <div class="mid-cta"><a class="btn y" href="#waitlist" data-waitlist="timeline">Save me 14 minutes →</a><span>Join the waitlist, it takes 10 seconds.</span></div>
   </div>
 </section>
 
@@ -454,6 +508,7 @@
       <h2 class="hd">Two cooks. Zero bumping.</h2>
       <p class="lead">Invite a partner with a 4-letter code. Each phone gets its own jobs, so you never reach for the same pan, and you both finish at the same time.</p>
       <div class="code" aria-label="Join code BAKE"><span>B</span><span>A</span><span>K</span><span>E</span></div>
+      <div class="mid-cta"><a class="btn l" href="#waitlist" data-waitlist="together">Get us both on the list →</a></div>
     </div>
     <div class="reveal">
       <div class="duo"><div class="spark">✶</div><div class="a" id="duoA"></div><div class="bb" id="duoB"></div></div>
@@ -512,24 +567,74 @@
   </div>
 </section>
 
-<section id="download" style="padding-top:0">
+<section id="waitlist" style="padding-top:0">
   <div class="wrap">
-    <div class="box final reveal">
-      <div class="celebrate"><iframe data-src="anim/anim.html?a=celebrate&caption=0" title="Chef celebrating"></iframe></div>
-      <h2 class="hd">Dinner, without the chaos.</h2>
-      <p class="lead">Get Tempo free on iPhone and cook your next recipe one easy step at a time.</p>
-      <a class="btn" href="/download/" data-download="footer-cta">
-        <svg width="24" height="28" viewBox="0 0 24 28" fill="#151515" aria-hidden="true"><path d="M19.6 14.9c0-3.4 2.8-5 2.9-5.1-1.6-2.3-4-2.6-4.9-2.7-2.1-.2-4.1 1.2-5.1 1.2-1.1 0-2.7-1.2-4.4-1.2C5.8 7.2 3.7 8.5 2.5 10.5c-2.4 4.2-.6 10.3 1.7 13.7 1.1 1.7 2.5 3.5 4.2 3.4 1.7-.1 2.3-1.1 4.4-1.1 2 0 2.6 1.1 4.4 1.1 1.8 0 3-1.7 4.1-3.3 1.3-1.9 1.8-3.8 1.8-3.9-.1 0-3.5-1.3-3.5-5.5zM16.3 4.9c.9-1.1 1.6-2.7 1.4-4.2-1.3.1-3 .9-3.9 2-.9 1-1.6 2.6-1.4 4.1 1.5.1 3-.8 3.9-1.9z"/></svg>
-        <span class="two"><small>Download on the</small>App Store</span>
-      </a>
+    <div class="box signup reveal">
+      <div>
+        <div class="celebrate" style="width:min(300px, 80%);aspect-ratio:360/250"><iframe data-src="anim/anim.html?a=celebrate&caption=0" title="Chef celebrating" style="width:100%;height:100%;border:0;pointer-events:none"></iframe></div>
+        <span class="sticker r">Coming soon</span>
+        <h2 class="hd">Dinner, without the chaos.</h2>
+        <p class="lead">Tempo is almost ready for iPhone. Join the waitlist and you'll be first in the kitchen.</p>
+      </div>
+      <div class="box formcard">
+        <form class="wl-form" novalidate>
+            <div><label for="wl-name">Your first name</label><input id="wl-name" name="name" autocomplete="given-name" required maxlength="120" placeholder="Sam"></div>
+            <div><label for="wl-email">Email</label><input id="wl-email" name="email" type="email" inputmode="email" autocomplete="email" required maxlength="254" placeholder="sam@email.com"></div>
+            <div><label>How did you hear about Tempo?</label>
+              <div class="chips" role="group"><button type="button">TikTok</button><button type="button">Instagram</button><button type="button">YouTube</button><button type="button">A friend</button><button type="button">Google</button><button type="button">Other</button></div>
+              <input class="other" name="other" maxlength="80" placeholder="Where? (optional)" aria-label="Where did you hear about Tempo">
+            </div>
+            <div class="wl-err" role="alert"></div>
+            <button class="btn r send" type="submit">Save my spot →</button>
+            <p class="wl-fine">No spam. We'll email you once when Tempo is ready.</p>
+          </form>
+          <div class="wl-done" aria-live="polite">
+            <div class="chefbox"></div>
+            <div class="hd" style="font-size:22px;margin-top:10px">You're on the list!</div>
+            <div class="spot">#1</div>
+            <p class="wl-fine" style="font-size:16px">We'll email you the day Tempo comes out.</p>
+            <button type="button" class="btn y share">Send to a cooking buddy</button>
+          </div>
+      </div>
     </div>
   </div>
 </section>
+
+<div class="sheet-bg" id="sheet" aria-hidden="true">
+  <div class="box sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+    <div class="peeker"><div id="sheetChef" style="animation:peekUp 4s ease-in-out infinite"></div></div>
+    <button class="close" type="button" aria-label="Close"><svg width="14" height="14" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 2 L10 10 M10 2 L2 10" stroke="#151515" stroke-width="2.4" stroke-linecap="round"/></svg></button>
+    <span class="sticker y">Waitlist</span>
+    <h3 class="hd" id="sheet-title">Save your spot</h3>
+    <p class="sub">Be first to cook with Tempo when it comes out.</p>
+    <form class="wl-form" novalidate>
+            <div><label for="sh-name">Your first name</label><input id="sh-name" name="name" autocomplete="given-name" required maxlength="120" placeholder="Sam"></div>
+            <div><label for="sh-email">Email</label><input id="sh-email" name="email" type="email" inputmode="email" autocomplete="email" required maxlength="254" placeholder="sam@email.com"></div>
+            <div><label>How did you hear about Tempo?</label>
+              <div class="chips" role="group"><button type="button">TikTok</button><button type="button">Instagram</button><button type="button">YouTube</button><button type="button">A friend</button><button type="button">Google</button><button type="button">Other</button></div>
+              <input class="other" name="other" maxlength="80" placeholder="Where? (optional)" aria-label="Where did you hear about Tempo">
+            </div>
+            <div class="wl-err" role="alert"></div>
+            <button class="btn r send" type="submit">Save my spot →</button>
+            <p class="wl-fine">No spam. We'll email you once when Tempo is ready.</p>
+          </form>
+          <div class="wl-done" aria-live="polite">
+            <div class="chefbox"></div>
+            <div class="hd" style="font-size:22px;margin-top:10px">You're on the list!</div>
+            <div class="spot">#1</div>
+            <p class="wl-fine" style="font-size:16px">We'll email you the day Tempo comes out.</p>
+            <button type="button" class="btn y share">Send to a cooking buddy</button>
+          </div>
+  </div>
+</div>
+
+<div class="sticky-cta" id="stickyCta"><a class="btn r" href="#waitlist" data-waitlist="sticky">Join the waitlist →</a></div>
 
 <footer>
   <div class="wrap">
     <a class="logo" href="#top"><span class="note" style="font-size:20px">TEMPO</span></a>
     <nav>
+      <a href="#waitlist" data-waitlist="footer">Join the waitlist</a>
       <a href="/download/" data-download="footer">Download</a>
       <a href="#how">How it works</a>
       <a href="#together">Cook together</a>
@@ -631,6 +736,101 @@ lane("lane2b", [[0, 7, "Chop", "y"], [7, 10, "Sauce", "p"]]);
 const jobs = [["Chop the veggies", "Brown the beef"], ["Grate the cheese", "Stir in the sauce"], ["Set the table", "Plate it up"]];
 let ji = 0;
 setInterval(() => { ji = (ji + 1) % jobs.length; $("jobA").textContent = jobs[ji][0]; $("jobB").textContent = jobs[ji][1]; }, 3200);
+
+// ---------- Waitlist ----------
+// People are added through the join_waitlist function in the Tempo Supabase
+// project (supabase/migrations/20261026120000_waitlist.sql in the app repo).
+const SUPABASE_URL = "https://iyesxqxgweucemagtrug.supabase.co";
+const SUPABASE_KEY = "sb_publishable_As8_f1v-h-3DarRd56NWnA_aMrNuJ7U";
+const qs = new URLSearchParams(location.search);
+const firstVisit = (() => {
+  // Remember where someone first came from, even if they sign up on a later page view.
+  const now = { utm_source: qs.get("utm_source") || qs.get("ref") || qs.get("src"), utm_medium: qs.get("utm_medium"), utm_campaign: qs.get("utm_campaign"),
+                referrer: document.referrer && !document.referrer.includes(location.hostname) ? document.referrer : null, landing: location.pathname + location.search };
+  try {
+    const saved = JSON.parse(localStorage.getItem("tempo-first-visit") || "null");
+    if (saved) return saved;
+    localStorage.setItem("tempo-first-visit", JSON.stringify(now));
+  } catch (e) {}
+  return now;
+})();
+const device = /iPhone|iPad|iPod/.test(navigator.userAgent) ? "iPhone" : /Android/.test(navigator.userAgent) ? "Android" : "Computer";
+let lastButton = "inline";
+
+document.querySelectorAll(".wl-form").forEach((form) => {
+  let heard = null;
+  const other = form.querySelector(".other");
+  form.querySelectorAll(".chips button").forEach((b) => b.addEventListener("click", () => {
+    const on = b.getAttribute("aria-pressed") !== "true";
+    form.querySelectorAll(".chips button").forEach((x) => x.setAttribute("aria-pressed", "false"));
+    b.setAttribute("aria-pressed", on);
+    heard = on ? b.textContent : null;
+    other.classList.toggle("show", on && heard === "Other");
+  }));
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const err = form.querySelector(".wl-err"), send = form.querySelector(".send");
+    const nameIn = form.querySelector("[name=name]"), emailIn = form.querySelector("[name=email]");
+    const name = nameIn.value.trim(), email = emailIn.value.trim();
+    err.textContent = "";
+    if (!name) { err.textContent = "What should we call you?"; nameIn.focus(); return; }
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { err.textContent = "That email doesn't look quite right."; emailIn.focus(); return; }
+    send.disabled = true; send.textContent = "Saving...";
+    const heardFrom = heard === "Other" && other.value.trim() ? "Other: " + other.value.trim() : heard;
+    try {
+      const r = await fetch(SUPABASE_URL + "/rest/v1/rpc/join_waitlist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", apikey: SUPABASE_KEY, Authorization: "Bearer " + SUPABASE_KEY },
+        body: JSON.stringify({ p_name: name, p_email: email, p_heard_from: heardFrom, p_button: form.closest(".sheet") ? lastButton : "inline",
+          p_utm_source: firstVisit.utm_source, p_utm_medium: firstVisit.utm_medium, p_utm_campaign: firstVisit.utm_campaign,
+          p_referrer: firstVisit.referrer, p_landing_page: firstVisit.landing, p_device: device }),
+      });
+      if (!r.ok) throw new Error(await r.text());
+      const out = await r.json();
+      const done = form.nextElementSibling;
+      done.querySelector(".spot").textContent = "#" + out.spot;
+      done.querySelector(".hd").textContent = out.already ? "You're already on the list!" : `You're on the list, ${name}!`;
+      done.querySelector(".chefbox").innerHTML = chef("love");
+      form.style.display = "none";
+      done.classList.add("show");
+      try { localStorage.setItem("tempo-joined", "1"); } catch (e) {}
+    } catch (x) {
+      err.textContent = "Hmm, that didn't go through. Check your connection and try again.";
+      send.disabled = false; send.textContent = "Save my spot →";
+    }
+  });
+});
+document.querySelectorAll(".wl-done .share").forEach((b) => b.addEventListener("click", async () => {
+  const url = "https://tempocooks.com/?ref=friend";
+  const text = "I just joined the Tempo waitlist. It walks you through any recipe one step at a time!";
+  try {
+    if (navigator.share) await navigator.share({ title: "Tempo", text, url });
+    else { await navigator.clipboard.writeText(url); b.textContent = "Link copied!"; }
+  } catch (e) {}
+}));
+
+// Every waitlist button opens the sheet (the big form at the bottom is the no-script fallback).
+const sheet = $("sheet");
+$("sheetChef").innerHTML = chef("happy");
+function openSheet(btn) {
+  lastButton = btn;
+  sheet.classList.add("open"); sheet.setAttribute("aria-hidden", "false");
+  document.body.style.overflow = "hidden";
+  setTimeout(() => { const f = sheet.querySelector("input[name=name]"); if (f && !sheet.querySelector(".wl-done.show") && matchMedia("(pointer:fine)").matches) f.focus(); }, 250);
+}
+function closeSheet() { sheet.classList.remove("open"); sheet.setAttribute("aria-hidden", "true"); document.body.style.overflow = ""; }
+document.querySelectorAll("[data-waitlist]").forEach((a) => a.addEventListener("click", (e) => { e.preventDefault(); openSheet(a.dataset.waitlist); }));
+sheet.querySelector(".close").addEventListener("click", closeSheet);
+sheet.addEventListener("click", (e) => { if (e.target === sheet) closeSheet(); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeSheet(); });
+if (location.hash === "#join") openSheet("link");
+
+// Phones: a sticky button shows up after the hero, hides near the sign-up card.
+const sticky = $("stickyCta");
+let pastHero = false, nearForm = false;
+const showSticky = () => sticky.classList.toggle("show", pastHero && !nearForm);
+new IntersectionObserver(([e]) => { pastHero = !e.isIntersecting; showSticky(); }).observe(document.querySelector(".hero .ctas"));
+new IntersectionObserver(([e]) => { nearForm = e.isIntersecting; showSticky(); }).observe($("waitlist"));
 
 // ---------- Scroll reveals + load pictures only when near the screen ----------
 const io = new IntersectionObserver((entries) => {

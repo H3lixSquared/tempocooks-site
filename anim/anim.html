@@ -1,0 +1,1838 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<style>
+  /* Fonts are bundled with the app and sit next to this file. */
+  @font-face { font-family:"Bricolage Grotesque"; font-weight:800; src:url("BricolageGrotesque-ExtraBold.ttf"); }
+  @font-face { font-family:"Bricolage Grotesque"; font-weight:600; src:url("BricolageGrotesque-SemiBold.ttf"); }
+  html, body { margin:0; padding:0; background:transparent; -webkit-user-select:none; overflow:hidden; }
+  #stage svg { display:block; width:100%; height:auto; overflow:visible; }
+  /* Caption strip scales with the width: always exactly 14vw tall. */
+  #cap { display:flex; align-items:center; gap:2vw; padding:0 1vw; height:14vw; box-sizing:border-box; overflow:hidden;
+    font-family:"Bricolage Grotesque"; font-weight:800; font-size:4.6vw; line-height:1.1; color:#151515; }
+  #cap .dot { flex:none; display:inline-grid; place-items:center; min-width:7vw; height:7vw; padding:0 1.8vw; border-radius:999px; border:2.5px solid #151515; background:#F49AC1; font-size:3.6vw; box-sizing:border-box; }
+</style></head>
+<body>
+<svg width="0" height="0" style="position:absolute"><filter id="wobble"><feTurbulence id="turb" type="fractalNoise" baseFrequency="0.035" numOctaves="2" seed="1"/><feDisplacementMap in="SourceGraphic" scale="2.4"/></filter></svg>
+<div id="stage"></div><div id="cap"></div>
+<script>
+// ---------- tiny animation kit ----------
+const INK = "#151515";
+const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+const seg = (t, a, b) => clamp((t - a) / (b - a));
+const ease = (p) => p * p * (3 - 2 * p);
+const lerp = (a, b, p) => a + (b - a) * p;
+const st = (w = 4.5, extra = "") => `stroke="${INK}" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round" ${extra}`;
+
+// A chef's knife lying along an angle. Tip at (x,y), pointing in direction `deg`.
+function knife(x, y, deg, len = 120) {
+  return `<g transform="translate(${x} ${y}) rotate(${deg})">
+    <path d="M0 0 L${-len} -9 L${-len} 7 Z" fill="#E3E7EA" ${st(3.5)}/>
+    <path d="M${-len + 4} -1 L-8 -1" stroke="#fff" stroke-width="2.5" stroke-linecap="round" opacity=".9"/>
+    <rect x="${-len - 52}" y="-8" width="54" height="16" rx="6" fill="#3B2A1E" ${st(3.5)}/>
+    <g transform="translate(${-len - 28} 0)">${fist()}</g></g>`;
+}
+// Cartoon glove fist (Just Hands), centered on the handle.
+function fist() {
+  return `<path d="M-16 -14 C-16 -20 -10 -22 -4 -22 L12 -22 C18 -22 20 -16 20 -10 L20 8 C20 14 16 16 10 16 L-8 16 C-14 16 -16 12 -16 6 Z" fill="#fff" ${st(3.5)}/>
+    <path d="M-8 -12 L-8 8 M2 -12 L2 8 M11 -12 L11 6" stroke="${INK}" stroke-width="2.6" stroke-linecap="round"/>`;
+}
+function board() {
+  return `<rect x="18" y="38" width="324" height="196" rx="18" fill="#E8C49A" ${st(4)}/>
+          <path d="M40 62 L320 62 M40 210 L320 210" stroke="#D3AC7E" stroke-width="3" stroke-linecap="round"/>`;
+}
+
+// A sticker label with a little pointer line, so anyone knows what the food is.
+function label(x, y, text, toX, toY, color = "#F7C94B") {
+  const w = text.length * 9.4 + 26;
+  return `<path d="M${x} ${y} L${toX} ${toY}" ${st(3)} fill="none"/>
+    <g transform="translate(${x} ${y}) rotate(-3)"><rect x="${-w / 2}" y="-15" width="${w}" height="28" rx="14" fill="${color}" ${st(3)}/>
+    <text y="5" text-anchor="middle" font-family="Bricolage Grotesque" font-weight="800" font-size="16" fill="${INK}">${text}</text></g>`;
+}
+// Flat open glove resting on top of food (side view).
+function flatHand(x, y) {
+  return `<g transform="translate(${x} ${y})"><path d="M-46 0 C-46 -12 -30 -16 -10 -16 L30 -16 C44 -16 48 -8 46 0 Z" fill="#fff" ${st(3.5)}/>
+    <path d="M-30 -8 L22 -8" stroke="${INK}" stroke-width="2.4" stroke-linecap="round"/>
+    <path d="M30 -16 C40 -30 70 -40 96 -46" ${st(14)}/><path d="M30 -16 C40 -30 70 -40 96 -46" stroke="#7FB4F0" stroke-width="8" stroke-linecap="round"/></g>`;
+}
+
+// ---------- 1. Dice an onion ----------
+const onion = {
+  title: "Dice an onion", dur: 14,
+  why: "Keeping the root on holds the layers together, so every cut makes neat little cubes.",
+  captions: [[0, "1", "Cut it in half, right through the root"], [2.6, "2", "Peel off the papery skin"],
+             [4.2, "3", "Flat side down. Slice the long way, but stop before the root"],
+             [6.6, "4", "Turn the knife flat. Make 2 cuts toward the root"], [9.2, "5", "Now slice across"], [12.3, "✓", "Diced!"]],
+  draw(t) {
+    const cx = 180, cy = 136, rx = 104, ry = 70, rootX = cx - rx;
+    let s = board();
+    // --- 1. whole onion, cut through the root
+    if (t < 2.6) {
+      const split = ease(seg(t, 1.6, 2.2)) * 30, fade = 1 - seg(t, 2.1, 2.6);
+      for (const dir of [-1, 1]) {
+        s += `<g transform="translate(0 ${dir * split})" opacity="${dir < 0 ? fade : 1}"><clipPath id="h${dir}"><rect x="0" y="${dir < 0 ? 0 : cy}" width="400" height="${dir < 0 ? cy : 400}"/></clipPath>
+          <g clip-path="url(#h${dir})"><path d="M${cx - 92} ${cy} C${cx - 92} ${cy - 92} ${cx + 70} ${cy - 92} ${cx + 100} ${cy} C${cx + 70} ${cy + 92} ${cx - 92} ${cy + 92} ${cx - 92} ${cy} Z" fill="#E7B46A" ${st()}/>
+          <path d="M${cx - 70} ${cy - 40} C${cx - 20} ${cy - 66} ${cx + 40} ${cy - 56} ${cx + 80} ${cy - 18} M${cx - 70} ${cy + 40} C${cx - 20} ${cy + 66} ${cx + 40} ${cy + 56} ${cx + 80} ${cy + 18} M${cx - 80} ${cy} L${cx + 92} ${cy}" stroke="#C48A3E" stroke-width="2.6" fill="none"/></g></g>`;
+      }
+      // root hairs and the pointy top
+      s += `<path d="M${cx - 92} ${cy - 10} l-14 -8 M${cx - 92} ${cy} l-18 0 M${cx - 92} ${cy + 10} l-14 8" ${st(2.6)}/>
+            <path d="M${cx + 100} ${cy} L${cx + 124} ${cy - 6} L${cx + 120} ${cy + 4} Z" fill="#C48A3E" ${st(3)}/>`;
+      if (t < 1.4) s += label(92, 22 + 20, "Onion", 130, 78);
+      const k = ease(seg(t, 0.5, 1.6));
+      s += knife(lerp(cx + 280, cx + 110, k), cy, 180);
+      if (t > 1.1) s += `<path d="M${cx + 100} ${cy} L${lerp(cx + 100, cx - 92, seg(t, 1.1, 1.6))} ${cy}" stroke="${INK}" stroke-width="3" stroke-dasharray="6 6"/>`;
+      return s;
+    }
+    const rows = [-44, -22, 0, 22, 44];
+    const colsX = [250, 222, 194, 166, 138, 110];
+    // --- 4. side view for the flat cuts
+    if (t >= 6.6 && t < 9.2) {
+      s = `<rect x="18" y="186" width="324" height="26" rx="8" fill="#E8C49A" ${st(4)}/>`;
+      s += `<path d="M70 186 C70 90 290 90 300 186 Z" fill="#F4E6F1" ${st()}/>`;
+      for (const f of [0.75, 0.5]) s += `<path d="M${lerp(185, 70, f)} 186 C${lerp(185, 70, f)} ${186 - 96 * f} ${lerp(185, 300, f)} ${186 - 96 * f} ${lerp(185, 300, f)} 186" fill="none" stroke="#D8B9D2" stroke-width="2.5"/>`;
+      s += `<path d="M70 176 L56 172 M70 182 L52 184" ${st(2.6)}/><text x="44" y="166" font-family="Bricolage Grotesque" font-weight="800" font-size="14" text-anchor="middle">root</text>`;
+      s += flatHand(150, 116);
+      const cutYs = [158, 132];
+      const i = clamp(Math.floor((t - 6.8) / 1.1), 0, 1), p = ((t - 6.8) / 1.1) % 1;
+      for (let c = 0; c < 2; c++) {
+        const done = t > 6.8 + (c + 1) * 1.1 - 0.35;
+        if (done || c < i) s += `<path d="M110 ${cutYs[c]} L300 ${cutYs[c]}" stroke="${INK}" stroke-width="2.6"/>`;
+      }
+      const tip = lerp(370, 108, ease(clamp(p * 1.5)));
+      s += knife(tip, cutYs[i], 180, 120);
+      s += `<g transform="translate(86 36)"><rect x="-56" y="-16" width="112" height="30" rx="15" fill="#7FB4F0" ${st(3)}/><text y="5" text-anchor="middle" font-family="Bricolage Grotesque" font-weight="800" font-size="15">side view</text></g>`;
+      return s;
+    }
+    // --- top view of the half
+    const appear = ease(seg(t, 2.6, 3.0));
+    const lenCuts = Math.floor(clamp((t - 4.4) / 0.42, 0, rows.length));
+    const crossCuts = Math.floor(clamp((t - 9.3) / 0.42, 0, colsX.length));
+    const flatCutsShown = t >= 9.2;
+    s += `<clipPath id="half"><ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}"/></clipPath>`;
+    s += `<path d="M${rootX + 4} ${cy - 14} C${rootX - 14} ${cy - 10} ${rootX - 14} ${cy + 10} ${rootX + 4} ${cy + 14}" fill="#D9C4A0" ${st(3.5)} opacity="${appear}"/>`;
+    const solidRight = crossCuts > 0 ? colsX[crossCuts - 1] : cx + rx + 4;
+    s += `<g clip-path="url(#half)" opacity="${appear}"><rect x="0" y="0" width="${solidRight}" height="400" fill="#F4E6F1"/>
+      ${[0.72, 0.5, 0.28].map(f => `<ellipse cx="${rootX}" cy="${cy}" rx="${rx * 2 * f + 20}" ry="${ry * f + 8}" fill="none" stroke="#D8B9D2" stroke-width="2.5"/>`).join("")}
+      ${rows.slice(0, lenCuts).map(y => `<path d="M${rootX + 28} ${cy + y} L${solidRight} ${cy + y}" stroke="${INK}" stroke-width="2.6"/>`).join("")}
+    </g><clipPath id="leftOf"><rect x="0" y="0" width="${solidRight}" height="400"/></clipPath>
+    <ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="none" ${st()} opacity="${appear}" clip-path="url(#leftOf)"/>`;
+    // --- 2. the papery skin peels away
+    if (t < 4.2) {
+      const peel = ease(seg(t, 3.0, 4.0));
+      s += `<g transform="translate(${peel * 140} ${-peel * 90}) rotate(${peel * 50} ${cx} ${cy})" opacity="${1 - peel}">
+        <ellipse cx="${cx}" cy="${cy}" rx="${rx + 4}" ry="${ry + 4}" fill="#E7B46A" ${st()}/>
+        <path d="M${rootX + 20} ${cy - 30} C${cx} ${cy - 60} ${cx + 60} ${cy - 40} ${cx + 96} ${cy - 10} M${rootX + 20} ${cy + 30} C${cx} ${cy + 60} ${cx + 60} ${cy + 40} ${cx + 96} ${cy + 10}" stroke="#C48A3E" stroke-width="2.6" fill="none"/></g>`;
+      if (t > 3.0 && t < 4.0) s += label(300, 52, "skin", 270, 90, "#fff");
+    }
+    // --- cubes from each finished cross cut
+    const edges = [cx + rx, ...colsX];
+    for (let c = 0; c < crossCuts; c++) {
+      const x0 = edges[c + 1], x1 = edges[c];
+      const yEdges = [-ry, ...rows, ry];
+      for (let r = 0; r < yEdges.length - 1; r++) {
+        const midX = (x0 + x1) / 2, midY = cy + (yEdges[r] + yEdges[r + 1]) / 2;
+        if (((midX - cx) / rx) ** 2 + ((midY - cy) / ry) ** 2 >= 0.92) continue;
+        const jig = Math.sin(c * 7 + r * 3) * 3;
+        const settle = ease(seg(t, 9.3 + c * 0.42 + 0.2, 9.3 + c * 0.42 + 0.6));
+        const dx = settle * (8 + c * 3) + jig, w = Math.min(24, x1 - x0 - 3), h = Math.min(19, yEdges[r + 1] - yEdges[r] - 3);
+        s += `<rect x="${midX - w / 2 + dx}" y="${midY - h / 2 + jig * 0.6}" width="${w}" height="${h}" rx="4" fill="#F4E6F1" ${st(2.6)} transform="rotate(${jig * 2} ${midX + dx} ${midY})"/>`;
+      }
+    }
+    if (t >= 4.4 && t < 6.6) {
+      const i = clamp(Math.floor((t - 4.4) / 0.42), 0, rows.length - 1), p = ((t - 4.4) / 0.42) % 1;
+      s += knife(lerp(cx + rx + 40, rootX + 28, ease(clamp(p * 1.6))), cy + rows[i], 180, 120);
+      if (t > 6.1) s += label(120, 50, "root stays on", rootX + 6, cy - 20);
+    } else if (t >= 9.3 && t < 12.0) {
+      const i = clamp(Math.floor((t - 9.3) / 0.42), 0, colsX.length - 1), p = ((t - 9.3) / 0.42) % 1;
+      s += knife(colsX[i], lerp(cy - ry - 50, cy + ry + 10, ease(clamp(p * 1.7))), 90, 150);
+    }
+    if (t > 12.3) {
+      const pop = ease(seg(t, 12.3, 12.7));
+      s += `<g transform="translate(296 66) scale(${pop})"><circle r="24" fill="#8FD18A" ${st(3.5)}/><path d="M-10 0 L-3 8 L11 -8" fill="none" ${st(4.5)}/></g>`;
+    }
+    return s;
+  },
+};
+
+// ---------- 2. Mince garlic ----------
+const garlic = {
+  title: "Mince garlic", dur: 7,
+  why: "Smashing first loosens the skin and makes the clove easy to chop small.",
+  captions: [[0, "1", "Lay the flat of the knife on the clove and press"], [2.2, "2", "The skin slips right off"], [3.6, "3", "Rock the knife until it's tiny"]],
+  draw(t) {
+    let s = board();
+    const cx = 180, cy = 140;
+    const press = t < 2.2 ? ease(seg(t, 0.6, 1.3)) : 1;
+    const peeled = t > 2.2;
+    const chopped = seg(t, 3.6, 6.4);
+    if (chopped < 0.05) {
+      // the clove, squashing under the knife
+      const sq = 1 - press * 0.35, wide = 1 + press * 0.25;
+      if (!peeled || t < 3.0) {
+        const skinOff = ease(seg(t, 2.2, 3.0));
+        s += `<g transform="translate(${cx} ${cy}) scale(${wide} ${sq})"><path d="M-40 18 C-44 -10 -20 -34 6 -34 C34 -34 46 -6 40 18 Z" fill="${peeled ? "#FFF3C8" : "#F6EEDB"}" ${st()}/>
+          ${peeled ? "" : `<path d="M-20 -20 C-10 -8 -10 6 -16 16 M14 -24 C20 -10 18 6 12 16" stroke="#D6C9A8" stroke-width="2.5" fill="none"/>`}</g>`;
+        if (peeled) s += `<g transform="translate(${cx + 70 * skinOff} ${cy - 60 * skinOff}) rotate(${skinOff * 120})" opacity="${1 - skinOff * 0.6}">
+          <path d="M-28 6 C-22 -16 10 -22 28 -8 C14 -2 -6 6 -28 6 Z" fill="#F6EEDB" ${st(3)}/></g>`;
+      } else {
+        s += `<g transform="translate(${cx} ${cy}) scale(1.25 0.65)"><path d="M-40 18 C-44 -10 -20 -34 6 -34 C34 -34 46 -6 40 18 Z" fill="#FFF3C8" ${st()}/></g>`;
+      }
+      if (t < 0.7) s += label(262, 220, "Garlic clove", 206, 162);
+      if (t < 2.2) {
+        // flat of the blade from above, with the glove pushing down
+        const y = cy - 30 + press * 10;
+        s += `<g transform="translate(${cx} ${y})"><rect x="-120" y="-30" width="210" height="48" rx="10" fill="#E3E7EA" ${st(3.5)}/>
+          <rect x="90" y="-18" width="66" height="26" rx="8" fill="#3B2A1E" ${st(3.5)}/>
+          <g transform="translate(-10 ${-36 + press * 8}) scale(1.5)">${fist()}</g>
+          ${press > 0.6 ? `<path d="M-90 40 L-104 52 M90 40 L104 52 M0 44 L0 60" ${st(3.5)} fill="none"/>` : ""}</g>`;
+      }
+    } else {
+      // tiny bits growing as the knife rocks over them
+      const n = Math.floor(6 + chopped * 34);
+      for (let i = 0; i < n; i++) {
+        const a = i * 2.39996, r = Math.sqrt(i) * 9 * (0.6 + chopped * 0.6);
+        const x = cx + Math.cos(a) * r * 1.5, y = cy + Math.sin(a) * r * 0.8;
+        const size = lerp(20, 7, chopped);
+        s += `<rect x="${x - size / 2}" y="${y - size / 2}" width="${size}" height="${size * 0.8}" rx="3" fill="#FFF3C8" ${st(2.4)} transform="rotate(${i * 37} ${x} ${y})"/>`;
+      }
+      // side-ish rocking knife: tip pinned, handle bobbing
+      const rock = Math.sin(t * 14) * 10, sweep = Math.sin(t * 2.2) * 40;
+      s += knife(cx - 80, cy - 4, 180 + rock + sweep * 0.1, 170);
+    }
+    return s;
+  },
+};
+
+// ---------- 3. Simmer vs boil ----------
+const bubbles = {
+  title: "Simmer vs. boil", dur: 4,
+  why: "Most recipes want a simmer, and a boil can make sauces split or meat tough.",
+  captions: [[0, "", "Simmer: small, lazy bubbles. Boil: big ones that never stop"]],
+  draw(t) {
+    let s = "";
+    const pot = (x, label, color, rolling) => {
+      let g = `<g transform="translate(${x} 0)">
+        <path d="M14 70 L146 70 L138 214 L22 214 Z" fill="#fff" ${st()}/>
+        <path d="M6 70 L154 70" ${st(5)}/>`;
+      // water with a moving surface
+      const amp = rolling ? 6 : 1.5;
+      let surf = `M20 ${100}`;
+      for (let i = 0; i <= 12; i++) surf += ` L${20 + i * 10} ${100 + Math.sin(t * (rolling ? 11 : 3) + i * 1.3) * amp}`;
+      g += `<path d="${surf} L136 212 L24 212 Z" fill="#BFE0F7" stroke="none"/><path d="${surf}" fill="none" ${st(3)}/>`;
+      const count = rolling ? 16 : 4, speed = rolling ? 70 : 18;
+      for (let i = 0; i < count; i++) {
+        const phase = (t * speed / 100 + i / count) % 1;
+        const bx = 34 + ((i * 53) % 92) + Math.sin(t * 4 + i) * (rolling ? 4 : 1);
+        const by = 206 - phase * 104, r = rolling ? lerp(4, 11, phase) : lerp(2, 4, phase);
+        g += `<circle cx="${bx}" cy="${by}" r="${r}" fill="#fff" ${st(2.4)}/>`;
+      }
+      if (rolling) for (let i = 0; i < 3; i++) {
+        const p = (t * 0.9 + i / 3) % 1;
+        g += `<path d="M${50 + i * 30} ${60 - p * 40} c-6-8 6-12 0-20" fill="none" ${st(3.5)} opacity="${1 - p}"/>`;
+      }
+      // burner flame: small vs big
+      const fl = rolling ? 1 : 0.45;
+      for (let i = 0; i < 5; i++) {
+        const fx = 40 + i * 20, h = (16 + Math.sin(t * 9 + i * 2) * 4) * fl;
+        g += `<path d="M${fx - 6} 230 Q${fx} ${230 - h * 2} ${fx + 6} 230 Z" fill="${color}" ${st(2.5)}/>`;
+      }
+      g += `<g transform="translate(80 36)"><rect x="-56" y="-18" width="112" height="32" rx="16" fill="${rolling ? "#F0643C" : "#8FD18A"}" ${st(3)}/>
+        <text y="5" text-anchor="middle" font-family="Bricolage Grotesque" font-weight="800" font-size="18" fill="${rolling ? "#fff" : INK}">${label}</text></g></g>`;
+      return g;
+    };
+    return pot(14, "Simmer", "#7FB4F0", false) + pot(196, "Boil", "#F0643C", true);
+  },
+};
+
+// ---------- 4. Ready to flip? (side view) ----------
+const flip = {
+  title: "Is it ready to flip?", dur: 10,
+  why: "Meat sticks until a crust forms, then lets go by itself. Forcing it early tears the crust off.",
+  captions: [[0, "1", "Give the pan a little shake. Stuck to the pan? Not yet"], [2.6, "2", "Wait a minute. The crust is still forming"],
+             [4.0, "3", "Shake again. It slides around? It's ready"], [6.4, "4", "Flip it. See that golden crust?"]],
+  draw(t) {
+    let s = "";
+    const shake1 = t < 2.4 ? Math.sin(seg(t, 0.4, 2.2) * Math.PI * 6) * 14 * (t > 0.4 && t < 2.2 ? 1 : 0) : 0;
+    const shake2 = t >= 4.0 && t < 6.2 ? Math.sin(seg(t, 4.2, 6.0) * Math.PI * 6) * 14 * (t > 4.2 && t < 6.0 ? 1 : 0) : 0;
+    const panX = shake1 + shake2;
+    // burner
+    for (let i = 0; i < 6; i++) { const fx = 100 + i * 32, h = 14 + Math.sin(t * 9 + i * 2) * 4; s += `<path d="M${fx - 7} 222 Q${fx} ${222 - h * 1.6} ${fx + 7} 222 Z" fill="#7FB4F0" ${st(2.5)}/>`; }
+    s += `<path d="M30 206 L330 206" ${st(4)}/>`;
+    // pan moves with the shake
+    s += `<g transform="translate(${panX} 0)"><path d="M60 180 C60 200 300 200 300 180 L304 170 L56 170 Z" fill="#4A4A4A" ${st()}/>
+      <path d="M300 176 L352 154" ${st(9)}/><path d="M300 176 L352 154" stroke="#3B2A1E" stroke-width="5" stroke-linecap="round"/></g>`;
+    // the chicken: stuck pieces ride along with the pan, free pieces slide and lag behind
+    const browned = clamp(seg(t, 0, 4.0) * 0.6 + seg(t, 3.0, 4.0) * 0.4);
+    const under = `rgb(${Math.round(lerp(232, 200, browned))},${Math.round(lerp(201, 130, browned))},${Math.round(lerp(160, 47, browned))})`;
+    let cx = 180 + (t < 4 ? panX : -shake2 * 1.6), cy = 156, rot = 0;
+    if (t >= 6.4) {
+      const p = ease(seg(t, 6.6, 7.8));
+      cx = 180 + Math.sin(p * Math.PI) * 6; cy = 156 - Math.sin(p * Math.PI) * 82; rot = p * 180;
+    }
+    const flipped = rot > 90;
+    s += `<g transform="translate(${cx} ${cy}) rotate(${rot})"><path d="M-44 6 C-46 -12 -20 -18 0 -16 C26 -18 46 -10 44 6 C40 14 -40 14 -44 6 Z" fill="#F2DDBF" ${st()}/>
+      <path d="M-42 6 C-40 14 40 14 44 6 L44 10 C40 18 -40 18 -44 10 Z" fill="${under}" ${st(3)}/></g>`;
+    if (flipped && t > 7.8) s += `<path d="M150 ${cy - 22} l-6 -10 M180 ${cy - 26} l0 -12 M210 ${cy - 22} l6 -10" ${st(3)}/>`;
+    // stuck: little glue marks; free: motion lines
+    if (t < 2.4 && t > 0.4) s += `<path d="M150 170 l0 6 M170 170 l0 6 M190 170 l0 6 M210 170 l0 6" ${st(3)} transform="translate(${panX} 0)" stroke="#F0643C"/>`;
+    if (t >= 4.2 && t < 6.0) s += `<path d="M${cx - 64} 150 l-16 0 M${cx - 64} 160 l-22 0 M${cx + 64} 150 l16 0 M${cx + 64} 160 l22 0" ${st(3)}/>`;
+    // spatula only for the flip
+    if (t >= 6.0) {
+      const inP = ease(seg(t, 6.0, 6.6)), outP = ease(seg(t, 7.8, 8.6));
+      const spX = lerp(340, 196, inP) + outP * 150, lift = t > 6.6 && t < 7.8 ? -Math.sin(seg(t, 6.6, 7.8) * Math.PI) * 24 : 0;
+      s += `<g transform="translate(${spX} ${164 + lift})"><path d="M-36 0 L10 0 L14 -6 L-34 -6 Z" fill="#D9DEE2" ${st(3)}/><path d="M12 -4 L70 -36" ${st(6)}/></g>`;
+    }
+    s += label(250, 104, "chicken", 206, 146, "#fff");
+    const tag = t < 2.6 ? ["Stuck: not yet", "#F0643C", "#fff"] : t < 4.0 ? ["Wait", "#F7C94B", INK] : t < 6.4 ? ["Slides: ready", "#8FD18A", INK] : ["Flip!", "#8FD18A", INK];
+    const w = tag[0].length * 10 + 28;
+    s += `<g transform="translate(${30 + w / 2} 46)"><rect x="${-w / 2}" y="-20" width="${w}" height="36" rx="18" fill="${tag[1]}" ${st(3)}/><text y="6" text-anchor="middle" font-family="Bricolage Grotesque" font-weight="800" font-size="18" fill="${tag[2]}">${tag[0]}</text></g>`;
+    if (t >= 2.6 && t < 4.0) { const w2 = seg(t, 2.6, 4.0); s += `<g transform="translate(300 56)"><circle r="22" fill="#fff" ${st(3.5)}/><path d="M0 0 L0 -13 M0 0 L${Math.cos(w2 * 6.28 - 1.57) * 11} ${Math.sin(w2 * 6.28 - 1.57) * 11}" ${st(3.5)}/></g>`; }
+    return s;
+  },
+};
+
+// ---------- Make a well (bowl cut in half so you can see inside) ----------
+const well = {
+  title: "Make a well", dur: 7,
+  why: "A hole in the dry mix holds the wet stuff, so it stirs in smooth without lumps.",
+  captions: [[0, "1", "Push the flour out to the sides"], [2.3, "2", "Leave a hole in the middle"],
+             [3.5, "3", "Pour the wet stuff into the hole"], [5.6, "✓", "Then stir from the middle out"]],
+  draw(t) {
+    let s = "";
+    const dig = ease(seg(t, 0.3, 2.3));
+    const mid = lerp(104, 172, dig), side = lerp(112, 98, dig);
+    // bowl shown cut in half
+    s += `<path d="M40 86 C44 228 316 228 320 86 Z" fill="#fff" ${st()}/><path d="M30 86 L330 86" ${st(5)}/>`;
+    s += `<clipPath id="wellBowl"><path d="M40 86 C44 228 316 228 320 86 Z"/></clipPath><g clip-path="url(#wellBowl)">`;
+    // the flour: a mound that becomes a ring with a hole in the middle
+    s += `<path d="M44 214 C52 150 92 ${side} 124 ${side} C150 ${side} 156 ${mid} 180 ${mid} C204 ${mid} 210 ${side} 236 ${side} C268 ${side} 308 150 316 214 Z" fill="#F3EBDD" ${st(3)}/>`;
+    // the milk pooling in the hole
+    const pour = seg(t, 3.7, 5.4);
+    if (pour > 0) s += `<ellipse cx="180" cy="${mid - 4 * pour}" rx="${8 + 26 * pour}" ry="${3 + 7 * pour}" fill="#FFF8E6" ${st(2.5)}/>`;
+    s += `</g>`;
+    // the back of a spoon pushing the flour out, round and round
+    if (t < 2.6) {
+      const a = t * 5, r = 6 + 22 * dig, out = ease(seg(t, 2.3, 2.6));
+      const x = 180 + Math.cos(a) * r + out * 110, y = mid - 8 - out * 80;
+      s += `<g transform="translate(${x} ${y}) rotate(${-20 + Math.sin(a) * 8})"><ellipse rx="16" ry="9" fill="#D9DEE2" ${st(3)}/><path d="M12 -6 L66 -62" ${st(6)}/></g>`;
+    }
+    // the jug tips in and pours
+    if (t >= 3.3) {
+      const tip = ease(seg(t, 3.3, 3.8)) - ease(seg(t, 5.3, 5.8));
+      if (tip > 0.02) {
+        s += `<g transform="translate(250 44) rotate(${-tip * 60})"><path d="M-22 -26 L18 -26 L14 22 L-18 22 Z" fill="#fff" ${st(3.5)}/><path d="M-22 -26 L-30 -34" ${st(3.5)}/><path d="M18 -12 C34 -12 34 10 16 10" fill="none" ${st(3.5)}/></g>`;
+        if (pour > 0 && pour < 1) s += `<path d="M222 34 C200 52 186 ${mid - 40} 182 ${mid - 8}" fill="none" stroke="#FFF8E6" stroke-width="7" stroke-linecap="round"/><path d="M222 34 C200 52 186 ${mid - 40} 182 ${mid - 8}" fill="none" ${st(2)} opacity=".5"/>`;
+      }
+    }
+    s += label(68, 40, "flour", 110, 112, "#fff");
+    if (t >= 3.7) s += label(180, 226, "milk", 180, mid + 4, "#fff");
+    return s;
+  },
+};
+
+// ---------- 5. Fold, don't stir (bowl cut in half so you can see inside) ----------
+const fold = {
+  title: "Fold, don't stir", dur: 9,
+  why: "Folding keeps the air in fluffy egg whites or whipped cream, so cakes stay light instead of flat.",
+  captions: [[0, "1", "Cut down through the middle"], [0.9, "2", "Scoop along the bottom"], [1.8, "3", "Lift and fold it over the top"],
+             [2.6, "4", "Turn the bowl a little. Repeat until no white streaks"],
+             [3.0, "1", "Cut down through the middle"], [3.9, "2", "Scoop along the bottom"], [4.8, "3", "Lift and fold it over the top"],
+             [5.6, "4", "Turn the bowl a little. Repeat until no white streaks"],
+             [6.0, "1", "Cut down through the middle"], [6.9, "2", "Scoop along the bottom"], [7.8, "3", "Lift and fold it over the top"],
+             [8.6, "✓", "No streaks left. Done"]],
+  draw(t) {
+    let s = "";
+    const n = Math.min(2, Math.floor(t / 3)), p = (t % 3) / 3;      // which fold, and progress inside it
+    const whiteLeft = [1, 0.62, 0.3][n] - (p > 0.6 ? (p - 0.6) / 0.4 * ([0.38, 0.32, 0.3][n]) : 0);
+    // bowl shown cut in half
+    s += `<path d="M40 86 C44 228 316 228 320 86 Z" fill="#fff" ${st()}/><path d="M30 86 L330 86" ${st(5)}/>`;
+    // bowl turning: stripes on the outside slide sideways after each fold
+    const turn = n * 26 + (p > 0.86 ? (p - 0.86) / 0.14 * 26 : 0);
+    s += `<clipPath id="bowlOut"><path d="M40 86 C44 228 316 228 320 86 Z"/></clipPath><g clip-path="url(#bowlOut)">`;
+    for (let i = -2; i < 10; i++) s += `<path d="M${40 + i * 40 + turn} 90 L${30 + i * 40 + turn} 230" stroke="#F49AC1" stroke-width="6" opacity=".35"/>`;
+    s += `</g>`;
+    // batter
+    s += `<path d="M58 118 C62 212 298 212 302 118 C250 112 110 112 58 118 Z" fill="#F6D9A3" ${st(3)}/>`;
+    // the white streaks of whipped egg white, cut and folded in
+    const cut = p > 0.12 && p < 0.6 ? 1 : 0;
+    const wx = 180, wy = 126, wr = 46 * whiteLeft;
+    if (wr > 2) {
+      if (cut) {
+        s += `<ellipse cx="${wx - wr * 0.6 - 6}" cy="${wy}" rx="${wr * 0.6}" ry="${wr * 0.28}" fill="#FFFFFF" ${st(2.5)}/>
+              <ellipse cx="${wx + wr * 0.6 + 6}" cy="${wy}" rx="${wr * 0.6}" ry="${wr * 0.28}" fill="#FFFFFF" ${st(2.5)}/>`;
+      } else {
+        s += `<ellipse cx="${wx}" cy="${wy}" rx="${wr}" ry="${wr * 0.32}" fill="#FFFFFF" ${st(2.5)}/>`;
+      }
+      // marbled streaks appearing as it mixes in
+      for (let i = 0; i < n + 1; i++) s += `<path d="M${100 + i * 40} ${150 + i * 8} q20 -8 40 0" stroke="#FFFFFF" stroke-width="${5 - n}" fill="none" stroke-linecap="round"/>`;
+    }
+    // spatula path: down the middle, along the bottom, up the side, over the top
+    let x, y, a, carry = 0;
+    // a = tilt of the handle: 0 is straight up, positive leans right.
+    if (p < 0.3) { const q = ease(p / 0.3); x = 180; y = lerp(70, 192, q); a = 0; }
+    else if (p < 0.6) { const q = ease((p - 0.3) / 0.3); x = lerp(180, 80, q); y = 192 - Math.sin(q * Math.PI / 2) * 44; a = lerp(0, 40, q); carry = q; }
+    else if (p < 0.86) { const q = ease((p - 0.6) / 0.26); x = lerp(80, 180, q); y = lerp(148, 112, q) - Math.sin(q * Math.PI) * 60; a = lerp(40, -70, q); carry = 1 - q; }
+    else { const q = (p - 0.86) / 0.14; x = 180; y = lerp(112, 70, q); a = lerp(-70, 0, q); }
+    // batter lifted on the spatula, then laid over the top
+    if (carry > 0.05) s += `<ellipse cx="${x}" cy="${y - 6}" rx="${24 * carry + 6}" ry="${12 * carry + 4}" fill="#F6D9A3" ${st(2.5)}/>
+                            <path d="M${x - 10} ${y - 8} q10 -6 20 0" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round"/>`;
+    if (p >= 0.8 && p < 0.98) { const q = seg(p, 0.8, 0.98); s += `<path d="M${180 - 40 * q} 118 C${180 - 20 * q} ${106 - 8 * (1 - q)} ${180 + 20 * q} ${106 - 8 * (1 - q)} ${180 + 40 * q} 118" fill="#F6D9A3" ${st(2.5)} opacity="${1 - q}"/>`; }
+    s += `<g transform="translate(${x} ${y}) rotate(${a})"><path d="M-14 -4 C-16 12 16 12 14 -4 Z" fill="#F49AC1" ${st(3)}/><path d="M0 -4 L0 -80" ${st(6)}/></g>`;
+    // path guide and turning arrow
+    s += `<path d="M180 70 L180 186 C150 200 90 196 80 150 C90 90 160 80 180 112" fill="none" stroke="${INK}" stroke-width="2.5" stroke-dasharray="7 9" opacity=".3"/>`;
+    s += `<g transform="translate(180 232)"><path d="M-70 0 C-30 12 30 12 70 0" fill="none" ${st(3.5)}/><path d="M60 -8 L72 0 L60 8" fill="none" ${st(3.5)} opacity="${p > 0.86 ? 1 : 0.3}"/></g>`;
+    s += label(306, 40, "egg whites", 214, 120, "#fff");
+    return s;
+  },
+};
+
+// ---------- 6. Translucent vs golden ----------
+const stages = {
+  title: "Translucent vs. golden", dur: 6, height: 280,
+  why: "\"Until translucent\" and \"until golden\" are minutes apart and taste very different.",
+  captions: [[0, "1", "Raw: white and firm"], [2, "2", "Translucent: see-through edges, about 5 min"], [4, "3", "Golden: brown edges, sweet, about 10 min"]],
+  draw(t) {
+    let s = "";
+    const p = (t % 6) / 6;
+    const col = (a, b, q) => { const c = (h) => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16)); const x = c(a), y = c(b); return `rgb(${x.map((v, i) => Math.round(lerp(v, y[i], q))).join(",")})`; };
+    const phase = p < 1 / 3 ? 0 : p < 2 / 3 ? 1 : 2;
+    const q = ease(seg(p, phase / 3 + 0.02, phase / 3 + 0.15));
+    const from = ["#FFFFFF", "#FFFFFF", "#F4E8B8"][phase], to = ["#FFFFFF", "#F4E8B8", "#D99A3E"][phase];
+    const fill = col(from, to, q);
+    const edge = phase === 0 ? 1 : phase === 1 ? lerp(1, 0.45, q) : 0.9;
+    // pan from above
+    s += `<circle cx="180" cy="128" r="102" fill="#4A4A4A" ${st()}/><circle cx="180" cy="128" r="86" fill="#5C5C5C"/>
+      <path d="M282 128 L350 128" ${st(10)}/><path d="M282 128 L350 128" stroke="#3B2A1E" stroke-width="6" stroke-linecap="round"/>`;
+    for (let i = 0; i < 14; i++) {
+      const a = i * 2.4, r = 16 + (i % 5) * 13, x = 180 + Math.cos(a) * r, y = 128 + Math.sin(a) * r;
+      s += `<path transform="translate(${x} ${y}) rotate(${i * 47})" d="M-12 -5 C-6 -9 6 -9 12 -5 C8 2 -8 2 -12 -5 Z" fill="${fill}" stroke="${phase === 2 ? "#7A4A15" : INK}" stroke-width="2.4" stroke-opacity="${edge}" opacity="${phase === 1 ? lerp(1, 0.78, q) : 1}"/>`;
+    }
+    s += label(300, 34, "onion", 236, 96, "#fff");
+    // progress strip
+    s += `<g transform="translate(40 254)">`;
+    ["Raw", "Translucent", "Golden"].forEach((label, i) => {
+      const on = i === phase;
+      s += `<rect x="${i * 96}" y="-16" width="88" height="30" rx="15" fill="${on ? ["#fff", "#F4E8B8", "#D99A3E"][i] : "#EEEBE2"}" ${st(on ? 3 : 2)}/>
+        <text x="${i * 96 + 44}" y="5" text-anchor="middle" font-family="Bricolage Grotesque" font-weight="800" font-size="14" fill="${INK}" opacity="${on ? 1 : 0.5}">${label}</text>`;
+    });
+    return s + `</g>`;
+  },
+};
+
+// The Stick Chef's head, our logo face, with a few moods.
+// Tempo's mascot, the Peeking Hat guy (Design/logo/HANDOFF.md): gumdrop
+// body, flat bottom, 0.8 chef hat, hard shadows, NO mouth: eyes only.
+// peekGuy stands on `ground` at x; o = { y lift, rot, hatDY, hatRot }.
+function peekGuy(x, ground, scale, eyes = "happy", o = {}) {
+  const sh = (d) => `<g transform="translate(5 5)">${d.replace(/fill="(?!none)[^"]+"/g, `fill="${INK}"`)}</g>${d}`;
+  const body = `<path d="M-37 0 Q-53 0 -52 -16 C-56 -62 -50 -100 0 -100 C50 -100 56 -62 52 -16 Q53 0 37 0 Z" fill="#fff" ${st(5)}/>`;
+  const hat = `<path d="M-34 0 C-58 -22 -40 -62 -14 -48 C-8 -74 28 -74 34 -48 C60 -62 74 -22 34 0 Z" fill="#fff" ${st(6.25)}/><rect x="-36" y="-4" width="72" height="18" rx="5" fill="#fff" ${st(6.25)}/>`;
+  const heart = (hx) => `<path d="M${hx} 8 C${hx - 15} -2 ${hx - 9} -14 ${hx} -6 C${hx + 9} -14 ${hx + 15} -2 ${hx} 8 Z" fill="#F0643C" ${st(3.5)}/>`;
+  const star = (sx) => `<path transform="translate(${sx} 0)" d="M0 -13 L3.8 -4 L13 -4 L5.6 2 L8.4 11 L0 5.6 L-8.4 11 L-5.6 2 L-13 -4 L-3.8 -4 Z" fill="#F7C94B" ${st(3.5)}/>`;
+  const dots = `<circle cx="-20" cy="0" r="7" fill="${INK}"/><circle cx="20" cy="0" r="7" fill="${INK}"/>`;
+  const face = eyes === "yum" ? heart(-20) + heart(20)
+    : eyes === "star" ? star(-20) + star(20)
+    : eyes === "meh" ? dots + `<path d="M-32 -14 H-10 M10 -21 Q20 -27 32 -19" fill="none" ${st(5)}/>`
+    : eyes === "calm" || eyes === "neutral" ? dots
+    : `<path d="M-31 5 L-20 -6 L-9 5 M9 5 L20 -6 L31 5" fill="none" ${st(7)}/>`;
+  return `<g transform="translate(${x} ${ground - (o.y || 0)}) scale(${scale}) rotate(${o.rot || 0})">
+    <ellipse cx="0" cy="3" rx="${55 * (1 - Math.min(1, (o.y || 0) / 60) * 0.4)}" ry="6" fill="${INK}" opacity=".15"/>
+    ${sh(body)}<g transform="translate(0 -40) scale(.9)">${face}</g>
+    <g transform="translate(0 ${-88 - (o.hatDY || 0)}) rotate(${o.hatRot || 0}) scale(.8)">${sh(hat)}</g></g>`;
+}
+// The old head-only spot: a small whole guy standing where the head was.
+function chefHead(x, y, mood, scale = 1) {
+  return peekGuy(x, y + 18 * scale, scale * 0.36, mood);
+}
+function tag(x, y, text, fill, color = INK) {
+  const w = text.length * 10 + 28;
+  return `<g transform="translate(${x + w / 2} ${y})"><rect x="${-w / 2}" y="-20" width="${w}" height="36" rx="18" fill="${fill}" ${st(3)}/>
+    <text y="6" text-anchor="middle" font-family="Bricolage Grotesque" font-weight="800" font-size="18" fill="${color}">${text}</text></g>`;
+}
+function flames(t, big = 1, y = 222) {
+  let s = "";
+  for (let i = 0; i < 6; i++) { const fx = 100 + i * 32, h = (14 + Math.sin(t * 9 + i * 2) * 4) * big; s += `<path d="M${fx - 7} ${y} Q${fx} ${y - h * 1.6} ${fx + 7} ${y} Z" fill="#7FB4F0" ${st(2.5)}/>`; }
+  return s;
+}
+function sidePan(extra = "") {
+  return `<path d="M30 206 L330 206" ${st(4)}/><path d="M60 180 C60 200 300 200 300 180 L304 150 L56 150 Z" fill="#4A4A4A" ${st()}/>
+    <path d="M300 160 L352 138" ${st(9)}/><path d="M300 160 L352 138" stroke="#3B2A1E" stroke-width="5" stroke-linecap="round"/>${extra}`;
+}
+
+// ---------- 1. Is the oil hot? ----------
+const oil = {
+  title: "Is the oil hot?", dur: 9,
+  why: "Food added to cold oil soaks it up and turns greasy. Hot oil sears it instead.",
+  captions: [[0, "1", "Cold oil sits flat and still. Not yet"], [2, "2", "It starts to shimmer and ripple. Almost"],
+             [4, "3", "Dip a wooden spoon handle in. Lots of bubbles? Ready"], [6.6, "!", "Smoking? Too hot. Turn the heat down"]],
+  draw(t) {
+    let s = flames(t, t < 2 ? 0.6 : 1) + sidePan();
+    const shimmer = t < 2 ? 0 : 1;
+    // A thin film of oil on the pan floor: a tablespoon, not a deep fryer.
+    let surf = "M84 180";
+    for (let i = 0; i <= 19; i++) surf += ` L${84 + i * 10} ${180 + Math.sin(t * 8 + i * 1.1) * 1.2 * shimmer}`;
+    s += `<path d="${surf} L276 185 C230 188 130 188 84 185 Z" fill="#F2C84B" stroke="none"/><path d="${surf}" fill="none" stroke="#C99A1E" stroke-width="2" stroke-linecap="round"/>`;
+    if (shimmer) for (let i = 0; i < 5; i++) { const x = 100 + i * 36 + Math.sin(t * 3 + i) * 8; s += `<path d="M${x} 181 q7 -2 14 0" stroke="#fff" stroke-width="2.4" fill="none" stroke-linecap="round" opacity="${0.4 + 0.5 * Math.sin(t * 6 + i)}"/>`; }
+    // wooden spoon test
+    if (t >= 4 && t < 6.6) {
+      const dip = ease(seg(t, 4.1, 4.7));
+      const y = lerp(40, 112, dip);  // handle tip just touches the thin film
+      s += `<g transform="translate(200 ${y}) rotate(12)"><rect x="-6" y="0" width="12" height="70" rx="5" fill="#C9874A" ${st(3)}/>
+        <ellipse cx="0" cy="-16" rx="18" ry="24" fill="#C9874A" ${st(3)}/></g>`;
+      if (t > 4.7) for (let i = 0; i < 10; i++) {
+        const p = ((t - 4.7) * 1.8 + i / 10) % 1, a = i * 0.9;
+        const bx = 214 + Math.cos(a) * (10 + p * 14), by = 180 - p * 8;
+        s += `<circle cx="${bx}" cy="${by}" r="${1.6 + p * 2.4}" fill="#fff" ${st(1.6)} opacity="${1 - p}"/>`;
+      }
+    }
+    // smoke when too hot
+    if (t >= 6.6) for (let i = 0; i < 4; i++) {
+      const p = ((t - 6.6) * 0.7 + i / 4) % 1;
+      s += `<path d="M${110 + i * 46} ${150 - p * 90} c-10 -10 10 -16 0 -28 c-8 -8 8 -14 0 -22" fill="none" stroke="#8A8A8A" stroke-width="${6 - p * 3}" stroke-linecap="round" opacity="${0.9 - p * 0.8}"/>`;
+    }
+    s += label(306, 104, "oil", 250, 181, "#F7C94B");
+    const tg = t < 2 ? ["Not yet", "#fff"] : t < 4 ? ["Almost", "#F7C94B"] : t < 6.6 ? ["Ready", "#8FD18A"] : ["Too hot", "#F0643C", "#fff"];
+    s += tag(28, 44, tg[0], tg[1], tg[2] || INK);
+    return s;
+  },
+};
+
+// ---------- 2. Don't crowd the pan ----------
+const crowd = {
+  title: "Don't crowd the pan", dur: 6, height: 272,
+  why: "Packed food traps its own steam, so it boils in its juices instead of browning.",
+  captions: [[0, "✗", "Pieces touching trap the steam. They stay pale and wet"], [3, "✓", "Give each piece room. Cook in two batches if you need to"]],
+  draw(t) {
+    let s = "";
+    const pan = (cx, pieces, crowded) => {
+      let g = `<circle cx="${cx}" cy="140" r="78" fill="#4A4A4A" ${st()}/><circle cx="${cx}" cy="140" r="66" fill="#5C5C5C"/>`;
+      const brown = crowded ? 0.15 : clamp(t / 4.5);
+      const fill = `rgb(${Math.round(lerp(242, 200, brown))},${Math.round(lerp(221, 130, brown))},${Math.round(lerp(191, 47, brown))})`;
+      pieces.forEach(([x, y, r]) => { g += `<path transform="translate(${cx + x} ${140 + y}) rotate(${r})" d="M-15 -9 C-10 -14 12 -14 15 -8 C17 2 12 10 0 10 C-12 10 -18 2 -15 -9 Z" fill="${fill}" ${st(2.6)}/>`; });
+      if (crowded) for (let i = 0; i < 3; i++) {
+        const p = (t * 0.6 + i / 3) % 1;
+        g += `<path d="M${cx - 30 + i * 30} ${110 - p * 70} c-12 -6 -12 -20 2 -22 c4 -12 22 -12 22 2 c12 0 12 18 0 20 c-6 8 -20 8 -24 0 Z" fill="#fff" ${st(2.4)} opacity="${(1 - p) * 0.95}"/>`;
+      } else for (let i = 0; i < 6; i++) {
+        const [x, y] = pieces[i];
+        g += `<path d="M${cx + x - 20} ${140 + y - 4 + Math.sin(t * 20 + i) * 2} l-6 -4 M${cx + x + 20} ${140 + y - 4 + Math.cos(t * 20 + i) * 2} l6 -4" ${st(2.5)}/>`;
+      }
+      return g;
+    };
+    const packed = [];
+    for (let r = -2; r <= 2; r++) for (let c = -2; c <= 2; c++) if (r * r + c * c <= 5) packed.push([c * 22, r * 20, (r * 3 + c * 7) * 10]);
+    const spaced = [[-34, -30, 10], [16, -36, -20], [-40, 10, 40], [8, 4, 0], [40, -2, 70], [-10, 40, -30]];
+    s += pan(92, packed, true) + pan(270, spaced, false);
+    s += tag(40, 246, "Crowded", "#F0643C", "#fff") + tag(222, 246, "Spaced", "#8FD18A");
+    return s;
+  },
+};
+
+// ---------- 3. Pat it dry ----------
+const dry = {
+  title: "Pat it dry", dur: 7,
+  why: "Water on the surface has to boil off before anything can brown.",
+  captions: [[0, "1", "Straight from the package it's wet"], [1.2, "2", "Press a paper towel on top"], [3.8, "3", "Flip it and do the other side"], [5.4, "✓", "Dry meat gets a golden crust"]],
+  draw(t) {
+    let s = board();
+    const cx = 180, cy = 140;
+    const dryness = ease(seg(t, 1.8, 2.8)) * 0.6 + ease(seg(t, 4.2, 5.0)) * 0.4;
+    s += `<path d="M${cx - 80} ${cy - 10} C${cx - 76} ${cy - 50} ${cx + 30} ${cy - 56} ${cx + 82} ${cy - 18} C${cx + 100} ${cy + 10} ${cx + 60} ${cy + 46} ${cx} ${cy + 44} C${cx - 60} ${cy + 44} ${cx - 82} ${cy + 24} ${cx - 80} ${cy - 10} Z" fill="#F4C9C0" ${st()}/>`;
+    // water drops that disappear as it dries
+    const drops = [[-40, -14], [-10, -28], [24, -20], [50, 2], [-24, 14], [10, 12], [40, 26], [-56, 4]];
+    drops.forEach(([x, y], i) => {
+      const left = 1 - dryness;
+      if (left < 0.05 || (i / drops.length) > left + 0.1) return;
+      s += `<path transform="translate(${cx + x} ${cy + y}) scale(${0.6 + left * 0.5})" d="M0 -8 C4 -2 6 2 6 4 C6 8 -6 8 -6 4 C-6 2 -4 -2 0 -8 Z" fill="#7FB4F0" ${st(2)}/>`;
+    });
+    // paper towel coming down and pressing
+    const press = (a, b) => ease(seg(t, a, a + 0.4)) * (1 - ease(seg(t, b - 0.4, b)));
+    const towel = Math.max(press(1.2, 3.4), press(3.9, 5.3));
+    if (towel > 0.02) {
+      const y = lerp(-80, 0, towel);
+      s += `<g transform="translate(${cx} ${cy + y})" opacity="${towel}"><rect x="-96" y="-58" width="192" height="116" rx="8" fill="#fff" ${st(3.5)}/>
+        ${[-60, -20, 20, 60].map(x => [-30, 10].map(yy => `<circle cx="${x}" cy="${yy}" r="2.5" fill="#D8D2C6"/>`).join("")).join("")}
+        ${dryness > 0.2 ? drops.slice(0, Math.round(dryness * 8)).map(([x, yy]) => `<circle cx="${x}" cy="${yy}" r="9" fill="#BFE0F7" opacity=".7"/>`).join("") : ""}
+        <g transform="translate(0 -40) scale(1.6)">${fist()}</g></g>`;
+    }
+    if (t >= 3.6 && t < 4.0) s += `<path d="M${cx + 110} ${cy - 30} a30 30 0 1 1 -10 -40" fill="none" ${st(3.5)}/><path d="M${cx + 96} ${cy - 76} l6 8 l-10 2" fill="none" ${st(3.5)}/>`;
+    if (t > 5.4) { const pop = ease(seg(t, 5.4, 5.8)); s += `<g transform="translate(300 66) scale(${pop})"><circle r="24" fill="#8FD18A" ${st(3.5)}/><path d="M-10 0 L-3 8 L11 -8" fill="none" ${st(4.5)}/></g>`; }
+    if (t < 1.2) s += label(270, 220, "chicken", 220, 170, "#fff");
+    return s;
+  },
+};
+
+// ---------- 4. Save the pasta water ----------
+const pastaWater = {
+  title: "Save the pasta water", dur: 9,
+  why: "The starchy water helps sauce cling to the pasta and turn glossy instead of watery.",
+  captions: [[0, "1", "Before you drain, scoop out a mug of the cooking water"], [2.8, "2", "Set it aside"], [4.0, "3", "Now drain the pasta"], [7.0, "✓", "Add splashes to the sauce later"]],
+  draw(t) {
+    let s = "";
+    // sink + colander on the right
+    s += `<path d="M196 150 L340 150 L330 232 L206 232 Z" fill="#D9DEE2" ${st()}/><path d="M188 150 L348 150" ${st(5)}/>`;
+    s += `<path d="M220 168 C222 210 314 210 316 168 Z" fill="#9AA4AC" ${st(3.5)}/>${[240, 262, 284, 300].map(x => `<circle cx="${x}" cy="186" r="2.4" fill="${INK}"/>`).join("")}`;
+    // pot: on the left, tips over the colander when draining
+    const tip = ease(seg(t, 4.0, 4.8)) * (1 - ease(seg(t, 6.6, 7.2)));
+    const potX = lerp(40, 160, tip), potY = lerp(120, 60, tip), rot = tip * 75;
+    s += `<g transform="translate(${potX} ${potY}) rotate(${rot} 70 40)">
+      <path d="M10 0 L130 0 L124 90 L16 90 Z" fill="#fff" ${st()}/><path d="M2 0 L138 0" ${st(5)}/>
+      ${t < 4.0 ? `<path d="M14 14 L126 14 L122 86 L18 86 Z" fill="#EDE6D2"/>
+        ${[30, 50, 70, 90, 110].map((x, i) => `<path d="M${x} 20 C${x + 10} 40 ${x - 10} 60 ${x + 6} 82" fill="none" stroke="#E8C66B" stroke-width="5" stroke-linecap="round"/>`).join("")}` : ""}</g>`;
+    if (t >= 4.4 && t < 6.6) for (let i = 0; i < 4; i++) { const p = ((t - 4.4) * 2 + i / 4) % 1; s += `<path d="M${236 + i * 14} ${130 + p * 40} l0 12" stroke="#BFE0F7" stroke-width="5" stroke-linecap="round" opacity="${1 - p}"/>`; }
+    if (t >= 5.0) s += [236, 256, 276, 296].map((x, i) => `<path d="M${x} 174 C${x + 8} 182 ${x - 6} 190 ${x + 4} 198" fill="none" stroke="#E8C66B" stroke-width="5" stroke-linecap="round"/>`).join("");
+    // the mug: dips into the pot, then parks on the counter
+    let mx = 300, my = 50;
+    if (t < 1.0) { mx = lerp(300, 110, ease(seg(t, 0.2, 1.0))); my = lerp(40, 60, seg(t, 0.2, 1.0)); }
+    else if (t < 2.2) { mx = 110; my = 60 + Math.sin(seg(t, 1.0, 2.2) * Math.PI) * 50; }
+    else { const q = ease(seg(t, 2.2, 3.2)); mx = lerp(110, 60, q); my = lerp(60, 218, q); }
+    const full = t > 1.6;
+    s += `<g transform="translate(${mx} ${my})"><path d="M-18 -26 L18 -26 L16 10 C16 16 -16 16 -16 10 Z" fill="#F49AC1" ${st(3.5)}/>
+      <path d="M18 -18 C30 -18 30 2 16 2" fill="none" ${st(3.5)}/>
+      ${full ? `<path d="M-15 -20 L15 -20" stroke="#EDE6D2" stroke-width="6" stroke-linecap="round"/>` : ""}
+      ${full && t > 3.2 ? `<path d="M-6 -34 c-4-6 4-8 0-14 M6 -34 c-4-6 4-8 0-14" fill="none" ${st(2.6)} opacity="${0.5 + 0.5 * Math.sin(t * 4)}"/>` : ""}</g>`;
+    if (t > 2.8) s += label(140, 236, "pasta water", 90, 214, "#F7C94B");
+    return s;
+  },
+};
+
+// ---------- 5. Season to taste ----------
+const season = {
+  title: "Season to taste", dur: 9,
+  why: "Recipes can't know your salt or your tomatoes. A pinch at a time means you never overshoot.",
+  captions: [[0, "1", "Taste it"], [1.6, "2", "A little flat? Add a small pinch of salt"], [3.4, "3", "Stir it in"], [5.0, "4", "Taste again"], [6.6, "✓", "Just right. Stop here"]],
+  draw(t) {
+    let s = "";
+    s += `<path d="M40 110 L200 110 L192 222 L48 222 Z" fill="#fff" ${st()}/><path d="M32 110 L208 110" ${st(5)}/>
+      <path d="M44 132 L196 132 L192 220 L48 220 Z" fill="#E8613C" opacity=".85"/><path d="M44 132 L196 132" ${st(3)}/>`;
+    s += label(120, 82, "sauce", 120, 132, "#fff");
+    // the chef reacts
+    const mood = t < 1.6 ? (t > 0.8 ? "meh" : "neutral") : t < 5.0 ? "meh" : t > 5.8 ? "yum" : "neutral";
+    s += chefHead(290, 120, mood, 1.6);
+    if (mood === "meh" && t < 1.6) s += `<text x="244" y="110" font-family="Bricolage Grotesque" font-weight="800" font-size="34">?</text>`;
+    if (mood === "yum") s += `<text x="228" y="96" font-family="Bricolage Grotesque" font-weight="800" font-size="24">yum!</text>`;
+    // spoon trips to the mouth
+    const trip = (a) => Math.sin(clamp(seg(t, a, a + 1.4)) * Math.PI);
+    const sip = Math.max(trip(0.0), trip(5.0));
+    if (sip > 0.02) s += `<g transform="translate(${lerp(120, 250, sip)} ${lerp(140, 140, sip) - sip * 10}) rotate(${-20 + sip * 10})"><ellipse cx="0" cy="0" rx="14" ry="8" fill="#C0C6CB" ${st(3)}/><path d="M12 -2 L56 -12" ${st(5)}/></g>`;
+    // a pinch of salt falling
+    if (t >= 1.6 && t < 3.4) {
+      s += `<g transform="translate(150 ${lerp(30, 54, ease(seg(t, 1.6, 2.2)))}) rotate(180)">${fist()}</g>`;
+      for (let i = 0; i < 8; i++) { const p = ((t - 2.2) * 1.4 + i / 8) % 1; if (t > 2.2) s += `<rect x="${140 + (i % 4) * 6}" y="${76 + p * 52}" width="4" height="4" fill="#fff" ${st(1.2)} opacity="${1 - p * 0.6}"/>`; }
+      s += label(60, 50, "salt", 140, 70, "#fff");
+    }
+    // stirring
+    if (t >= 3.4 && t < 5.0) {
+      const a = (t - 3.4) * 7;
+      s += `<g transform="translate(${120 + Math.cos(a) * 30} ${150 + Math.sin(a) * 6})"><path d="M0 0 L20 -80" ${st(6)} stroke="#8B5A2B"/><ellipse cx="0" cy="0" rx="8" ry="12" fill="#C9874A" ${st(3)}/></g>`;
+      s += `<path d="M84 158 C100 150 140 150 156 158" fill="none" ${st(2.6)} stroke-dasharray="5 6" opacity=".5"/>`;
+    }
+    return s;
+  },
+};
+
+// ---------- 6. Rest meat before cutting ----------
+const rest = {
+  title: "Rest meat before cutting", dur: 11,
+  why: "Resting lets the juices settle back in. Cut too soon and they end up on the board instead.",
+  captions: [[0, "✗", "Cut right off the heat: the juice runs everywhere"], [4.6, "1", "Instead, let it rest on the board for 5 minutes"], [7.0, "✓", "Now cut. The juice stays inside"]],
+  draw(t) {
+    let s = board();
+    const phase2 = t >= 4.6;
+    const cx = 170, cy = 136;
+    const cutP = phase2 ? seg(t, 7.0, 9.0) : seg(t, 0.6, 3.0);
+    const nCuts = Math.floor(cutP * 5);
+    const puddle = phase2 ? 0.08 * cutP : ease(seg(t, 1.0, 4.2));
+    // juice puddle
+    if (puddle > 0.01) s += `<path d="M${cx - 110 * puddle - 70} ${cy + 10} C${cx - 120 * puddle - 70} ${cy - 60 * puddle - 40} ${cx + 140 * puddle + 60} ${cy - 70 * puddle - 40} ${cx + 130 * puddle + 70} ${cy + 20} C${cx + 120 * puddle + 60} ${cy + 70 * puddle + 50} ${cx - 100 * puddle - 70} ${cy + 70 * puddle + 50} ${cx - 110 * puddle - 70} ${cy + 10} Z" fill="#D9534F" opacity=".55"/>`;
+    // the steak: one solid piece, slices come off the right end as you cut
+    const slices = 5, left = cx - 90, w = 180, sw = w / slices;
+    const uncutRight = left + (slices - nCuts) * sw;
+    s += `<clipPath id="steakShape"><rect x="${left}" y="${cy - 46}" width="${w}" height="92" rx="30"/></clipPath>
+      <clipPath id="uncut"><rect x="0" y="0" width="${uncutRight}" height="300"/></clipPath>
+      <g clip-path="url(#uncut)"><g clip-path="url(#steakShape)"><rect x="${left}" y="${cy - 46}" width="${w}" height="92" fill="#8A4B24"/>
+        ${[-50, -10, 30, 70].map(o => `<path d="M${cx - 80 + o} ${cy + 50} L${cx - 20 + o} ${cy - 50}" stroke="#4A2410" stroke-width="6" stroke-linecap="round"/>`).join("")}</g>
+        <rect x="${left}" y="${cy - 46}" width="${w}" height="92" rx="30" fill="none" ${st()}/></g>`;
+    if (nCuts > 0) s += `<path d="M${uncutRight} ${cy - 44} L${uncutRight} ${cy + 44}" ${st(3.5)}/>`;
+    // cut slices lie fanned out, showing the pink inside
+    for (let k = 0; k < nCuts; k++) {
+      const x = uncutRight + 14 + k * (sw + 6);
+      s += `<g transform="rotate(${8 + k * 3} ${x + sw / 2} ${cy})"><rect x="${x}" y="${cy - 44}" width="${sw}" height="88" rx="8" fill="#8A4B24" ${st(3.5)}/>
+        <rect x="${x + 5}" y="${cy - 36}" width="${sw - 10}" height="72" rx="6" fill="${phase2 ? "#E58A8A" : "#C96262"}"/></g>`;
+      if (!phase2) s += `<ellipse cx="${x + sw / 2 + 6}" cy="${cy + 52}" rx="${14 + puddle * 10}" ry="6" fill="#D9534F" opacity=".7"/>`;
+    }
+    // knife slicing down
+    if (cutP > 0 && cutP < 1) {
+      const i = slices - 1 - Math.floor(cutP * 5), p = (cutP * 5) % 1;
+      s += knife(left + (i + 1) * sw - 4, lerp(cy - 80, cy + 60, ease(clamp(p * 1.4))), 90, 140);
+    }
+    // the clock while resting
+    if (t >= 4.6 && t < 7.0) { const w2 = seg(t, 4.6, 7.0); s += `<g transform="translate(300 64)"><circle r="24" fill="#fff" ${st(3.5)}/><path d="M0 0 L0 -14 M0 0 L${Math.cos(w2 * 6.28 - 1.57) * 12} ${Math.sin(w2 * 6.28 - 1.57) * 12}" ${st(3.5)}/></g><text x="300" y="112" text-anchor="middle" font-family="Bricolage Grotesque" font-weight="800" font-size="16">5 min</text>`; }
+    if (!phase2 && t > 2.4) s += tag(24, 34, "Juice everywhere", "#F0643C", "#fff");
+    if (t > 9.2) s += tag(24, 34, "Stays juicy", "#8FD18A");
+    if (t < 0.6 || (t > 4.6 && t < 5.2)) s += label(300, 220, "steak", 240, 170, "#fff");
+    return s;
+  },
+};
+
+// ---------- Fun ones for empty moments ----------
+const gang = {
+  title: "Food Gang", dur: 4.5, captions: [],
+  draw(t) {
+    let s = `<path d="M110 150 C110 200 120 222 180 222 C240 222 250 200 250 150 Z" fill="#F7C94B" ${st()}/><path d="M98 150 L262 150" ${st(5)}/>
+      <path d="M96 162 C84 162 84 180 98 178 M264 162 C276 162 276 180 262 178" fill="none" ${st(4)}/>`;
+    for (let i = 0; i < 3; i++) { const p = (t * 0.5 + i / 3) % 1; s += `<path d="M${150 + i * 30} ${140 - p * 40} c-6-8 6-12 0-20" fill="none" ${st(3.5)} opacity="${1 - p}"/>`; }
+    const starts = [[60, 120], [180, 70], [300, 120]];
+    const chars = [
+      `<path d="M-14 10 C-16 -10 -6 -22 0 -26 C6 -22 16 -10 14 10 C8 16 -8 16 -14 10 Z" fill="#fff" ${st(3.5)}/><path d="M0 -26 L2 -32" ${st(3)}/><circle cx="-5" cy="0" r="2.4" fill="${INK}"/><circle cx="5" cy="0" r="2.4" fill="${INK}"/>`,
+      `<circle r="17" fill="#F0643C" ${st(3.5)}/><path d="M-6 -17 L0 -11 L6 -17" fill="none" stroke="#3E8E41" stroke-width="3.5" stroke-linecap="round"/><circle cx="-5" cy="0" r="2.4" fill="${INK}"/><circle cx="5" cy="0" r="2.4" fill="${INK}"/><path d="M-4 6 Q0 9 4 6" fill="none" ${st(3)}/>`,
+      `<path d="M-16 4 C-16 -12 -4 -18 0 -26 C4 -18 16 -12 16 4 C16 16 -16 16 -16 4 Z" fill="#E8D7F0" ${st(3.5)}/><circle cx="-5" cy="4" r="2.4" fill="${INK}"/><circle cx="5" cy="4" r="2.4" fill="${INK}"/>`,
+    ];
+    chars.forEach((c, i) => {
+      const local = t - i * 1.2;
+      let [x, y] = starts[i], r = 0, show = 1;
+      if (local > 0 && local < 1) {
+        const p = local;
+        x = lerp(starts[i][0], 180, p); y = starts[i][1] - Math.sin(p * Math.PI) * 60 + (160 - starts[i][1]) * p;
+        r = (180 - starts[i][0]) * p * 1.2; if (p > 0.85) show = 1 - (p - 0.85) / 0.15;
+      } else if (local >= 1) show = 0;
+      else y += Math.sin(t * 6 + i) * 3;
+      if (t > 4.1) { show = (t - 4.1) / 0.4; [x, y] = starts[i]; r = 0; }
+      s += `<g transform="translate(${x} ${y}) rotate(${r})" opacity="${show}">${c}</g>`;
+    });
+    return s;
+  },
+};
+
+const reading = {
+  title: "Reading your recipe", dur: 4, captions: [],
+  draw(t) {
+    // a long recipe paragraph whose lines peel off into numbered steps
+    let s = `<g transform="rotate(-3 110 130)"><rect x="34" y="40" width="150" height="180" rx="10" fill="#fff" ${st()}/>`;
+    const lines = 6, done = Math.floor(clamp(t / 3.2) * lines + 0.0001);
+    for (let i = 0; i < lines; i++) {
+      if (i < done) continue;
+      s += `<path d="M52 ${70 + i * 24} L${i % 2 ? 150 : 166} ${70 + i * 24}" stroke="#B9B3A7" stroke-width="6" stroke-linecap="round"/>`;
+    }
+    s += `</g>`;
+    const colors = ["#F7C94B", "#8FD18A", "#7FB4F0", "#F49AC1", "#F7C94B", "#8FD18A"];
+    for (let i = 0; i < done; i++) {
+      const p = ease(clamp((t - (i + 1) * (3.2 / lines) + 0.5) / 0.5));
+      const tx = 214, ty = 34 + i * 34;
+      const x = lerp(60, tx, p), y = lerp(70 + i * 24, ty, p);
+      s += `<g transform="translate(${x} ${y}) rotate(${lerp(-3, i % 2 ? 2 : -2, p)})"><rect x="0" y="0" width="122" height="28" rx="8" fill="${colors[i]}" ${st(3)}/>
+        <text x="16" y="19" font-family="Bricolage Grotesque" font-weight="800" font-size="15" fill="${INK}">${i + 1}</text>
+        <path d="M34 14 L${i % 2 ? 96 : 108} 14" stroke="${INK}" stroke-width="4" stroke-linecap="round" opacity=".55"/></g>`;
+    }
+    if (t > 3.6) s = `<g opacity="${1 - seg(t, 3.6, 4)}">${s}</g>`;
+    return s;
+  },
+};
+
+const celebrate = {
+  title: "Dinner's ready", dur: 2.4, captions: [],
+  draw(t) {
+    let s = "";
+    const jump = Math.abs(Math.sin(t / 2.4 * Math.PI * 2)) * 26;
+    // confetti
+    const cols = ["#F7C94B", "#F0643C", "#8FD18A", "#7FB4F0", "#F49AC1"];
+    for (let i = 0; i < 26; i++) {
+      const p = ((t / 2.4) + i / 26) % 1, x = 20 + ((i * 97) % 320) + Math.sin(p * 6 + i) * 10, y = -10 + p * 260;
+      s += `<rect x="${x}" y="${y}" width="9" height="5" rx="2" fill="${cols[i % 5]}" ${st(1.5)} transform="rotate(${p * 540 + i * 30} ${x} ${y})"/>`;
+    }
+    // plate with steam
+    s += `<ellipse cx="250" cy="206" rx="62" ry="14" fill="#fff" ${st()}/><path d="M206 200 C214 170 286 170 294 200 Z" fill="#F6D9A3" ${st(3.5)}/>`;
+    for (let i = 0; i < 3; i++) { const p = (t * 0.6 + i / 3) % 1; s += `<path d="M${232 + i * 18} ${170 - p * 40} c-6-8 6-12 0-20" fill="none" ${st(3.5)} opacity="${1 - p}"/>`; }
+    // the mascot jumps for joy, star eyes, hat popping up
+    s += peekGuy(110, 222, 0.9, "star", { y: jump, hatDY: jump * 0.5, rot: Math.sin(t * 5) * 4 });
+    s += `<path d="M40 222 L320 222" ${st(3)}/>`;
+    return s;
+  },
+};
+
+// ---------- Everyday actions: shown on steps that need no special how-to ----------
+const chop = {
+  title: "Chop", dur: 1.6, captions: [],
+  draw(t) {
+    let s = board();
+    // a carrot, getting shorter as coins pile up
+    const cut = Math.floor(t / 0.4), p = (t % 0.4) / 0.4;
+    const end = 250 - cut * 22;
+    s += `<path d="M70 132 C70 118 ${end} 120 ${end} 132 C${end} 146 70 146 70 132 Z" fill="#F08A3C" ${st()}/>
+      <path d="M70 132 L46 116 M70 132 L44 132 M70 132 L48 148" stroke="#3E8E41" stroke-width="6" stroke-linecap="round"/>
+      ${[110, 150, 190].filter(x => x < end).map(x => `<path d="M${x} 124 l-4 6" ${st(2.5)}/>`).join("")}`;
+    for (let i = 0; i < cut + 4; i++) {
+      const x = 268 + (i % 3) * 22 + (i % 2) * 6, y = 168 + Math.floor(i / 3) * 10 - (i % 3) * 3;
+      s += `<ellipse cx="${x}" cy="${y}" rx="12" ry="8" fill="#F08A3C" ${st(2.5)}/><circle cx="${x}" cy="${y}" r="3" fill="#F6B27A"/>`;
+    }
+    const down = p < 0.45 ? ease(p / 0.45) : 1 - ease((p - 0.45) / 0.55);
+    s += knife(end - 6, lerp(40, 150, down), 90, 110);
+    return s;
+  },
+};
+
+const stir = {
+  title: "Stir", dur: 2, captions: [],
+  draw(t) {
+    let s = flames(t, 1, 226);
+    s += `<path d="M60 112 L300 112 L290 204 L70 204 Z" fill="#fff" ${st()}/><path d="M50 112 L310 112" ${st(5)}/>
+      <path d="M40 124 C26 124 26 144 42 142 M320 124 C334 124 334 144 318 142" fill="none" ${st(4)}/>
+      <path d="M66 136 L294 136 L288 202 L72 202 Z" fill="#E8613C" opacity=".85"/><path d="M66 136 L294 136" ${st(3)}/>`;
+    for (let i = 0; i < 3; i++) { const p = (t * 0.6 + i / 3) % 1; s += `<path d="M${140 + i * 40} ${100 - p * 50} c-6-8 6-12 0-20" fill="none" ${st(3.5)} opacity="${1 - p}"/>`; }
+    const a = t / 2 * Math.PI * 2, x = 180 + Math.cos(a) * 60, y = 152 + Math.sin(a) * 10;
+    s += `<g transform="translate(${x} ${y}) rotate(${Math.cos(a) * 14})"><ellipse cx="0" cy="0" rx="10" ry="14" fill="#C9874A" ${st(3)}/>
+      <path d="M0 -12 L0 -110" stroke="#8B5A2B" stroke-width="8" stroke-linecap="round"/><path d="M0 -12 L0 -110" fill="none" ${st(2)} opacity=".0"/>
+      <g transform="translate(0 -96)">${fist()}</g></g>`;
+    s += `<path d="${`M${180 + Math.cos(a - 0.6) * 60} ${150 + Math.sin(a - 0.6) * 10} Q${180 + Math.cos(a - 0.3) * 64} ${150 + Math.sin(a - 0.3) * 12} ${x} ${y}`}" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" opacity=".8"/>`;
+    return s;
+  },
+};
+
+const bake = {
+  title: "Bake", dur: 3, captions: [],
+  draw(t) {
+    let s = `<rect x="70" y="40" width="220" height="190" rx="16" fill="#fff" ${st()}/>
+      <rect x="70" y="40" width="220" height="40" rx="16" fill="#E0DCD1" ${st()}/>`;
+    // dials, one turning like a timer
+    s += `<circle cx="110" cy="60" r="11" fill="#fff" ${st(3)}/><path d="M110 60 l0 -8" ${st(3)}/>`;
+    s += `<circle cx="250" cy="60" r="11" fill="#fff" ${st(3)}/><path d="M250 60 l${Math.sin(t * 2.1) * 8} ${-Math.cos(t * 2.1) * 8}" ${st(3)}/>`;
+    // glowing window with a dish inside
+    const glow = 0.55 + 0.25 * Math.sin(t * 4);
+    s += `<rect x="96" y="98" width="168" height="104" rx="12" fill="#F7C94B" opacity="${glow}" ${st()}/>
+      <path d="M120 170 L240 170 L232 190 L128 190 Z" fill="#fff" ${st(3)}/><path d="M130 170 C140 ${148 - Math.sin(t * 2) * 3} 220 ${148 - Math.sin(t * 2) * 3} 230 170 Z" fill="#E8B46A" ${st(3)}/>`;
+    for (let i = 0; i < 3; i++) { const p = (t * 0.5 + i / 3) % 1; s += `<path d="M${150 + i * 30} ${150 - p * 30} c-5-6 5-10 0-16" fill="none" stroke="#C47A1E" stroke-width="3" stroke-linecap="round" opacity="${(1 - p) * 0.8}"/>`; }
+    s += `<path d="M110 214 L250 214" ${st(5)}/>`;
+    return s;
+  },
+};
+
+const mix = {
+  title: "Mix", dur: 1.2, captions: [],
+  draw(t) {
+    let s = `<path d="M60 130 C64 220 296 220 300 130 Z" fill="#7FB4F0" ${st()}/><path d="M50 130 L310 130" ${st(5)}/>
+      <path d="M86 140 Q180 156 274 140" stroke="#fff" stroke-width="6" fill="none" stroke-linecap="round" opacity=".7"/>`;
+    const sway = Math.sin(t / 1.2 * Math.PI * 2);
+    s += `<g transform="translate(${180 + sway * 40} 60) rotate(${sway * 12})">
+      <path d="M0 50 C-14 74 -10 96 0 98 C10 96 14 74 0 50" fill="none" ${st(3.5)}/><path d="M0 50 C-6 74 -4 92 0 98 C4 92 6 74 0 50" fill="none" ${st(3)}/>
+      <path d="M0 50 L0 18" ${st(7)}/><g transform="translate(0 10)">${fist()}</g></g>`;
+    s += `<path d="M76 96 l14 6 M284 96 l-14 6 M78 112 l12 3 M282 112 l-12 3" ${st(3)} opacity="${0.4 + 0.6 * Math.abs(sway)}"/>`;
+    return s;
+  },
+};
+
+const serve = {
+  title: "Serve", dur: 3, captions: [],
+  draw(t) {
+    let s = `<ellipse cx="180" cy="190" rx="130" ry="30" fill="#fff" ${st()}/><ellipse cx="180" cy="186" rx="92" ry="18" fill="none" stroke="#E0DCD1" stroke-width="3"/>
+      <path d="M110 186 C116 140 244 140 250 186 Z" fill="#F6D9A3" ${st(3.5)}/>
+      <circle cx="150" cy="166" r="6" fill="#8FD18A" ${st(2)}/><circle cx="196" cy="158" r="5" fill="#F0643C" ${st(2)}/><circle cx="220" cy="172" r="6" fill="#8FD18A" ${st(2)}/>`;
+    for (let i = 0; i < 3; i++) { const p = (t * 0.5 + i / 3) % 1; s += `<path d="M${156 + i * 24} ${132 - p * 46} c-6-8 6-12 0-20" fill="none" ${st(3.5)} opacity="${1 - p}"/>`; }
+    for (let i = 0; i < 3; i++) {
+      const p = (t / 3 + i / 3) % 1, x = [64, 300, 92][i], y = [80, 70, 40][i], k = Math.sin(p * Math.PI);
+      s += `<path transform="translate(${x} ${y}) scale(${k})" d="M0 -12 L3 -3 L12 0 L3 3 L0 12 L-3 3 L-12 0 L-3 -3 Z" fill="#F7C94B" ${st(2.5)}/>`;
+    }
+    return s;
+  },
+};
+
+const chef = {
+  title: "Keep going", dur: 2, captions: [],
+  draw(t) {
+    const nod = Math.sin(t / 2 * Math.PI * 2);
+    let s = `<path d="M60 222 L300 222" ${st(3)}/>`;
+    // the mascot bobs along, happy
+    s += peekGuy(180, 222, 0.95, "happy", { y: Math.abs(nod) * 6, rot: nod * 4, hatDY: Math.abs(nod) * 3 });
+    return s;
+  },
+};
+
+// ---------- Ingredients: one drawing per food, reused by every action ----------
+// type picks the shape; fill is the outside, inner is the cut face.
+const FOODS = {
+  chicken:   { type: "slab",  fill: "#F4C9C0", inner: "#F8DCD4", mark: "#E8A9A0", cooked: "#D99A5B" },
+  beef:      { type: "slab",  fill: "#B5473A", inner: "#C9605A", mark: "#F2D5CF", cooked: "#6B3A22" },
+  pork:      { type: "slab",  fill: "#F2C2B0", inner: "#F6D6CA", mark: "#FBEDE6", cooked: "#C98B5E" },
+  salmon:    { type: "slab",  fill: "#F59A6B", inner: "#F8B48E", mark: "#FFFFFF", cooked: "#F2C29C" },
+  fish:      { type: "slab",  fill: "#F4EDE2", inner: "#FBF7F0", mark: "#E2D8C8", cooked: "#E8C9A0" },
+  tofu:      { type: "block", fill: "#F4EFDF", inner: "#FBF8EE", cooked: "#E2B66A" },
+  cheese:    { type: "block", fill: "#F7C94B", inner: "#FBDB7A", holes: true },
+  parmesan:  { type: "block", fill: "#F1E3B0", inner: "#F7EDC9", rind: true },
+  butter:    { type: "block", fill: "#FFE08A", inner: "#FFEBAE" },
+  chocolate: { type: "block", fill: "#6B3A22", inner: "#8A5230", squares: true },
+  bread:     { type: "loaf",  fill: "#D9A55B", inner: "#F6E3B8" },
+  onion:     { type: "round", fill: "#E7B46A", inner: "#F4E6F1", rings: "#D8B9D2", top: "tip" },
+  redonion:  { type: "round", fill: "#8E3F6B", inner: "#E9CFE0", rings: "#B97BA0", top: "tip" },
+  tomato:    { type: "round", fill: "#E8503C", inner: "#F07A62", seeds: "#F7D27A", top: "leaf" },
+  potato:    { type: "round", fill: "#C9A26B", inner: "#F4E3B0", spots: true, oval: true },
+  sweetpotato: { type: "round", fill: "#B5633E", inner: "#F59E3A", oval: true },
+  apple:     { type: "round", fill: "#D9443A", inner: "#FBF1D4", top: "stem" },
+  lemon:     { type: "round", fill: "#F7D84B", inner: "#FBEFA0", citrus: true, oval: true },
+  lime:      { type: "round", fill: "#8CC152", inner: "#C8E39A", citrus: true, oval: true },
+  orange:    { type: "round", fill: "#F59E3A", inner: "#F8C27A", citrus: true },
+  strawberry:{ type: "round", fill: "#E8413C", inner: "#F7A0A0", top: "leaf", seeds: "#F7D27A" },
+  carrot:    { type: "long",  fill: "#F08A3C", inner: "#F6B27A", top: "greens", taper: true },
+  cucumber:  { type: "long",  fill: "#3E8E41", inner: "#CDE8B0", seedsLong: true },
+  zucchini:  { type: "long",  fill: "#4E9A3A", inner: "#E9F2C7" },
+  celery:    { type: "long",  fill: "#9BCB6A", inner: "#C9E6A2", ribs: true },
+  sausage:   { type: "long",  fill: "#B5633E", inner: "#D98A6A", cooked: "#7A3A1C" },
+  banana:    { type: "long",  fill: "#F7D84B", inner: "#FBF1C7", curve: true },
+  eggplant:  { type: "long",  fill: "#5B2C6F", inner: "#F1E8C8", top: "cap" },
+  corn:      { type: "long",  fill: "#F7C94B", inner: "#FBDB7A", kernels: true },
+  chile:     { type: "long",  fill: "#3E8E41", inner: "#BFE08A", taper: true, small: true, top: "cap" },
+  pepper:    { type: "pepper", fill: "#E8503C", inner: "#F07A62" },
+  greenpepper: { type: "pepper", fill: "#4E9A3A", inner: "#8CC152" },
+  yellowpepper: { type: "pepper", fill: "#F7C94B", inner: "#FBDB7A" },
+  garlic:    { type: "bulb",  fill: "#FBF4E4", inner: "#FFF3C8" },
+  ginger:    { type: "knob",  fill: "#D9B27A", inner: "#F4E0A8" },
+  mushroom:  { type: "mushroom", fill: "#C9A27A", inner: "#F1E3C9" },
+  broccoli:  { type: "tree",  fill: "#4E9A3A", inner: "#7BBF5A" },
+  greenbeans: { type: "long", fill: "#4E9A3A", inner: "#8CC152", small: true, taper: true },
+  cauliflower: { type: "tree", fill: "#F4EFDF", inner: "#FBF8EE" },
+  herbs:     { type: "leafy", fill: "#4E9A3A", inner: "#6DB04A" },
+  greens:    { type: "leafy", fill: "#6DB04A", inner: "#9BCB6A", big: true },
+  avocado:   { type: "avocado", fill: "#3E6B2A", inner: "#C8E08A", pit: "#8A5A2B" },
+  egg:       { type: "egg",   fill: "#FFF7E6", inner: "#F7C94B" },
+  shrimp:    { type: "shrimp", fill: "#F59A6B", inner: "#F8B48E", cooked: "#F0643C" },
+  bacon:     { type: "strip", fill: "#D96B5A", inner: "#F4C9B8", cooked: "#8A3A22" },
+  nuts:      { type: "nut",   fill: "#B5814A", inner: "#D9A56B" },
+  dough:     { type: "blob",  fill: "#F4DFB0", inner: "#F8EAC8" },
+  squash:    { type: "round", fill: "#E8A23C", inner: "#F59E3A", oval: true, top: "stem" },
+  pasta:     { type: "long",  fill: "#F2D27A", inner: "#F7E2A0", small: true },
+  rice:      { type: "round", fill: "#FBF8EE", inner: "#FFFFFF", oval: true },
+  food:      { type: "round", fill: "#8FD18A", inner: "#C8E8B0", oval: true },
+};
+// Liquids for pouring, boiling, and blending.
+const LIQUIDS = { milk: "#FFFFFF", cream: "#FFF6E3", broth: "#E8B46A", stock: "#E8B46A", wine: "#9C2F4A", water: "#BFE0F7",
+  oil: "#F2C84B", sauce: "#E8613C", vinegar: "#F4E1A8", juice: "#F59E3A", batter: "#F6D9A3", eggs: "#F7C94B", soy: "#4A2A1A", honey: "#E8A23C" };
+
+const pieceColor = (F) => F.inner;
+
+/// The whole ingredient, centered on 0,0, about 130 wide.
+function whole(F, cooked = 0) {
+  const fill = cooked && F.cooked ? mixColor(F.fill, F.cooked, cooked) : F.fill;
+  const s3 = st(3.5);
+  switch (F.type) {
+    case "slab":
+      return `<path d="M-62 -6 C-58 -34 20 -40 58 -22 C72 -8 60 28 20 32 C-24 36 -64 22 -62 -6 Z" fill="${fill}" ${st()}/>
+        <path d="M-36 -10 C-14 -20 14 -18 34 -8 M-30 8 C-8 0 18 2 38 10" fill="none" stroke="${F.mark}" stroke-width="5" stroke-linecap="round" opacity=".8"/>`;
+    case "block":
+      return `<path d="M-50 -14 L-30 -34 L54 -34 L34 -14 Z" fill="${F.inner}" ${s3}/><path d="M34 -14 L54 -34 L54 18 L34 38 Z" fill="${shade(fill)}" ${s3}/>
+        <rect x="-50" y="-14" width="84" height="52" fill="${fill}" ${st()}/>
+        ${F.holes ? `<ellipse cx="-24" cy="6" rx="7" ry="5" fill="${F.inner}" ${st(2)}/><ellipse cx="10" cy="22" rx="5" ry="4" fill="${F.inner}" ${st(2)}/><ellipse cx="18" cy="-2" rx="4" ry="3" fill="${F.inner}" ${st(2)}/>` : ""}
+        ${F.rind ? `<path d="M-50 30 L34 30" stroke="#C9A45A" stroke-width="7"/>` : ""}
+        ${F.squares ? `<path d="M-22 -14 L-22 38 M6 -14 L6 38 M-50 12 L34 12" stroke="${F.inner}" stroke-width="3"/>` : ""}`;
+    case "loaf":
+      return `<path d="M-64 30 L-64 -4 C-64 -40 64 -40 64 -4 L64 30 Z" fill="${fill}" ${st()}/><path d="M-30 -22 l14 14 M0 -28 l14 14 M30 -22 l14 14" stroke="#B5813A" stroke-width="4" stroke-linecap="round"/>`;
+    case "round": {
+      const rx = F.oval ? 56 : 46, ry = F.oval ? 38 : 44;
+      let g = `<ellipse cx="0" cy="0" rx="${rx}" ry="${ry}" fill="${fill}" ${st()}/>`;
+      if (F.top === "tip") g += `<path d="M${rx - 4} -4 L${rx + 18} -10 L${rx + 14} 2 Z" fill="#C48A3E" ${st(3)}/><path d="M-${rx} -6 l-12 -6 M-${rx} 0 l-14 0 M-${rx} 6 l-12 6" ${st(2.6)}/>
+        <path d="M-${rx - 16} -${ry - 14} C-10 -${ry + 6} 20 -${ry + 2} ${rx - 10} -10" fill="none" stroke="#C48A3E" stroke-width="2.6"/>`;
+      if (F.top === "leaf") g += `<path d="M-14 -${ry - 2} L0 -${ry + 10} L14 -${ry - 2} L6 -${ry - 6} L0 -${ry + 2} L-6 -${ry - 6} Z" fill="#3E8E41" ${st(2.6)}/>`;
+      if (F.top === "stem") g += `<path d="M0 -${ry - 4} C2 -${ry + 8} 6 -${ry + 12} 8 -${ry + 14}" ${st(4)} fill="none"/><path d="M6 -${ry + 4} C18 -${ry + 14} 30 -${ry + 6} 22 -${ry}" fill="#3E8E41" ${st(2.6)}/>`;
+      if (F.citrus) g += `${[[-20, -10], [10, -18], [24, 8], [-6, 14], [-30, 10]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="1.8" fill="${shade(fill)}"/>`).join("")}<path d="M${rx} 0 l8 0" ${st(3)}/>`;
+      if (F.spots) g += `${[[-20, -8], [14, -14], [22, 10], [-8, 14]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="2.6" fill="#8A6A3A"/>`).join("")}`;
+      if (F.seeds && F.top === "leaf" && F.fill === "#E8413C") g += `${[[-14, -6], [8, -10], [16, 8], [-6, 12], [0, 0]].map(([x, y]) => `<path d="M${x} ${y} l1.5 3" stroke="${F.seeds}" stroke-width="2.6" stroke-linecap="round"/>`).join("")}`;
+      return g;
+    }
+    case "long": {
+      const w = F.small ? 12 : 20, L = F.small ? 54 : 74;
+      if (F.curve) return `<path d="M-${L} -6 C-30 34 40 34 ${L} -10 C${L - 6} -2 ${L - 10} 2 ${L - 14} 6 C30 22 -26 22 -${L - 10} -10 Z" fill="${fill}" ${st()}/><path d="M${L} -10 l8 -6" ${st(4)}/>`;
+      const tip = F.taper ? `C${L - 6} ${w * 0.3} ${L - 6} -${w * 0.3} ${L} 0` : `C${L + 8} ${w} ${L + 8} -${w} ${L} -${w}`;
+      let g = `<path d="M-${L} -${w} L${L} -${w} ${F.taper ? `C${L + 4} -2 ${L + 4} 2 ${L} ${w * 0.15}` : `C${L + 10} -${w} ${L + 10} ${w} ${L} ${w}`} L-${L} ${w} C-${L + 10} ${w} -${L + 10} -${w} -${L} -${w} Z" fill="${fill}" ${st()}/>`;
+      if (F.taper) g = `<path d="M-${L} -${w} C0 -${w + 2} ${L - 20} -${w * 0.4} ${L} 0 C${L - 20} ${w * 0.4} 0 ${w + 2} -${L} ${w} C-${L + 8} ${w} -${L + 8} -${w} -${L} -${w} Z" fill="${fill}" ${st()}/>`;
+      if (F.top === "greens") g += `<path d="M-${L} 0 L-${L + 22} -14 M-${L} 0 L-${L + 26} 0 M-${L} 0 L-${L + 22} 14" stroke="#3E8E41" stroke-width="6" stroke-linecap="round"/>`;
+      if (F.top === "cap") g += `<path d="M-${L - 4} -${w} C-${L + 10} -${w} -${L + 10} ${w} -${L - 4} ${w} L-${L + 2} 0 Z" fill="#3E8E41" ${st(2.6)}/><path d="M-${L + 2} 0 l-12 -2" ${st(4)}/>`;
+      if (F.ribs) g += `<path d="M-${L - 4} -6 L${L - 4} -6 M-${L - 4} 6 L${L - 4} 6" stroke="${shade(fill)}" stroke-width="3"/>`;
+      if (F.kernels) for (let x = -L + 10; x < L - 6; x += 12) g += `<path d="M${x} -${w - 6} L${x} ${w - 6}" stroke="#E8B23C" stroke-width="3"/>`;
+      if (!F.taper && !F.top && !F.curve) g += `<path d="M-${L - 14} -${w - 7} L${L - 20} -${w - 7}" stroke="#fff" stroke-width="3" stroke-linecap="round" opacity=".4"/>`;
+      return g;
+    }
+    case "pepper":
+      return `<path d="M-44 -24 C-58 10 -40 44 -14 40 C-6 46 6 46 14 40 C40 44 58 10 44 -24 C30 -38 -30 -38 -44 -24 Z" fill="${fill}" ${st()}/>
+        <path d="M-10 -34 C-6 -20 -8 10 -14 38 M12 -34 C10 -20 12 10 14 38" fill="none" stroke="${shade(fill)}" stroke-width="3"/>
+        <path d="M0 -34 C0 -44 6 -50 14 -50" ${st(6)} fill="none" stroke="#3E8E41"/>`;
+    case "bulb":
+      return `<path d="M-40 14 C-48 -10 -20 -36 0 -44 C20 -36 48 -10 40 14 C30 34 -30 34 -40 14 Z" fill="${fill}" ${st()}/>
+        <path d="M0 -40 C-10 -20 -12 10 -6 30 M0 -40 C10 -20 12 10 6 30 M-24 -20 C-30 0 -26 20 -18 28 M24 -20 C30 0 26 20 18 28" fill="none" stroke="#DCCDAA" stroke-width="2.6"/>
+        <path d="M0 -44 L0 -54" ${st(4)}/><path d="M-14 30 l-4 8 M0 32 l0 8 M14 30 l4 8" ${st(2.4)}/>`;
+    case "knob":
+      return `<path d="M-56 4 C-60 -14 -40 -20 -30 -10 C-28 -30 -6 -32 -2 -14 C6 -32 30 -28 28 -10 C46 -16 62 2 50 16 C40 30 -46 28 -56 4 Z" fill="${fill}" ${st()}/>
+        <path d="M-36 6 l10 2 M-6 10 l12 -2 M22 8 l10 2" stroke="#B58A4A" stroke-width="2.6" stroke-linecap="round"/>`;
+    case "mushroom":
+      return `<path d="M-14 6 L-12 40 C-8 46 8 46 12 40 L14 6 Z" fill="${F.inner}" ${st()}/>
+        <path d="M-56 8 C-56 -40 56 -40 56 8 C30 14 -30 14 -56 8 Z" fill="${fill}" ${st()}/>
+        <circle cx="-20" cy="-12" r="4" fill="${shade(fill)}"/><circle cx="16" cy="-18" r="3" fill="${shade(fill)}"/>`;
+    case "tree":
+      return `<path d="M-10 6 L-14 44 L14 44 L10 6 Z" fill="${F.inner}" ${st()}/>
+        ${[[-30, -6, 20], [0, -20, 24], [30, -6, 20], [-14, 8, 18], [16, 8, 18]].map(([x, y, r]) => `<circle cx="${x}" cy="${y}" r="${r}" fill="${fill}" ${st(3.5)}/>`).join("")}`;
+    case "leafy": {
+      const s = F.big ? 1.25 : 1;
+      return `<g transform="scale(${s})">${[[-26, -18], [0, -30], [26, -18]].map(([x, y], i) => `<path d="M0 40 L${x} ${y + 10}" ${st(3.5)} stroke="#3E8E41"/>
+        <path d="M${x} ${y + 14} C${x - 18} ${y} ${x - 6} ${y - 22} ${x} ${y - 26} C${x + 6} ${y - 22} ${x + 18} ${y} ${x} ${y + 14} Z" fill="${i === 1 ? F.inner : fill}" ${st(3)}/>`).join("")}</g>`;
+    }
+    case "avocado":
+      return `<path d="M0 -46 C20 -46 22 -16 34 4 C46 30 26 46 0 46 C-26 46 -46 30 -34 4 C-22 -16 -20 -46 0 -46 Z" fill="${fill}" ${st()}/>`;
+    case "egg":
+      return `<path d="M0 -44 C26 -44 38 0 34 18 C30 40 -30 40 -34 18 C-38 0 -26 -44 0 -44 Z" fill="${fill}" ${st()}/>`;
+    case "shrimp": {
+      const c = cooked && F.cooked ? mixColor(F.fill, F.cooked, cooked) : F.fill;
+      let g = `<path d="M40 -10 C40 -40 -10 -46 -34 -24 C-50 -8 -44 22 -24 30 C-14 34 -6 26 -12 18 C-26 12 -26 -10 -10 -18 C6 -26 22 -18 24 -6 Z" fill="${c}" ${st()}/>`;
+      g += `<path d="M-30 -14 l12 8 M-36 4 l14 2 M-30 20 l12 -6 M-8 -30 l2 14 M12 -30 l-4 14" stroke="${shade(c)}" stroke-width="2.6" stroke-linecap="round"/>`;
+      return g + `<path d="M40 -10 l14 -6 M40 -10 l14 6" ${st(3)} fill="none"/>`;
+    }
+    case "strip":
+      return `<path d="M-70 -14 C-46 -26 -24 -2 0 -14 C24 -26 46 -2 70 -14 L70 8 C46 20 24 -4 0 8 C-24 20 -46 -4 -70 8 Z" fill="${fill}" ${st()}/>
+        <path d="M-68 -2 C-46 -12 -24 10 0 -2 C24 -12 46 10 68 -2" fill="none" stroke="${F.inner}" stroke-width="5"/>`;
+    case "nut":
+      return `${[-30, 0, 30].map((x, i) => `<g transform="translate(${x} ${i === 1 ? -10 : 6})"><ellipse rx="20" ry="16" fill="${fill}" ${st(3.5)}/><path d="M0 -14 L0 14 M-12 -6 C-6 0 -6 4 -12 10 M12 -6 C6 0 6 4 12 10" stroke="${shade(fill)}" stroke-width="2.4" fill="none"/></g>`).join("")}`;
+    case "blob":
+      return `<path d="M-56 18 C-64 -18 -30 -40 0 -38 C34 -40 66 -16 56 18 C44 38 -44 38 -56 18 Z" fill="${fill}" ${st()}/>`;
+  }
+  return "";
+}
+
+/// A cut piece: cube, coin, strip, bit, shred, chunk.
+function piece(F, kind, x, y, rot = 0, size = 1) {
+  const inner = F.inner, outer = F.fill;
+  const tf = `transform="translate(${x} ${y}) rotate(${rot}) scale(${size})"`;
+  if (F.type === "leafy") return `<path ${tf} d="M-6 0 C-6 -8 6 -8 6 0 C6 8 -6 8 -6 0 Z" fill="${kind === "bit" ? outer : inner}" ${st(2)}/>`;
+  if (F.type === "tree" && kind !== "bit") return `<g ${tf}><path d="M-3 2 L-3 10 L3 10 L3 2" fill="${inner}" ${st(2)}/><circle cx="0" cy="-2" r="8" fill="${outer}" ${st(2.4)}/></g>`;
+  switch (kind) {
+    case "cube": return `<g ${tf}><rect x="-10" y="-8" width="20" height="16" rx="3" fill="${inner}" ${st(2.6)}/>${F.type === "slab" || F.type === "round" ? `<path d="M-8 -6 L8 -6" stroke="${outer}" stroke-width="3" stroke-linecap="round"/>` : ""}</g>`;
+    case "coin": return `<g ${tf}><ellipse rx="13" ry="10" fill="${outer}" ${st(2.6)}/><ellipse rx="9" ry="7" fill="${inner}"/>${F.seedsLong || F.seeds ? `<circle r="2.4" fill="${shade(inner)}"/>` : ""}${F.rings ? `<ellipse rx="5" ry="4" fill="none" stroke="${F.rings}" stroke-width="2"/>` : ""}</g>`;
+    case "strip": return `<g ${tf}><rect x="-20" y="-5" width="40" height="10" rx="4" fill="${inner}" ${st(2.4)}/><path d="M-18 -4 L18 -4" stroke="${outer}" stroke-width="3" stroke-linecap="round"/></g>`;
+    case "bit": return `<rect ${tf} x="-3.5" y="-3" width="7" height="6" rx="1.5" fill="${inner}" stroke="${INK}" stroke-width="1.6"/>`;
+    case "shred": return `<path ${tf} d="M-13 -1 C-6 -6 6 3 13 -2 L13 2 C6 7 -6 -2 -13 3 Z" fill="${inner === "#FBF8EE" || inner === "#FBF1D4" ? outer : inner}" stroke="${INK}" stroke-width="1.4" stroke-linejoin="round"/>`;
+    case "chunk": return `<path ${tf} d="M-12 -8 L8 -11 L13 4 L2 11 L-11 7 Z" fill="${inner}" ${st(2.6)}/>`;
+    case "wedge": return `<path ${tf} d="M-14 8 C-14 -10 14 -10 14 8 Z" fill="${outer}" ${st(2.6)}/>`;
+  }
+  return "";
+}
+
+// A cut piece of meat (cube or strip) that goes from raw to golden.
+function bit(F, shape, x, y, rot, cooked) {
+  const raw = F.inner || F.fill, done = F.cooked || "#D99A5B";
+  const color = mixColor(raw.startsWith("#") ? raw : "#F4C9C0", done, clamp(cooked));
+  const edge = mixColor(raw.startsWith("#") ? raw : "#F4C9C0", "#B8743A", clamp(cooked));
+  const tf = `transform="translate(${x} ${y}) rotate(${rot})"`;
+  if (shape === "strip") return `<g ${tf}><rect x="-17" y="-5" width="34" height="10" rx="4" fill="${color}" ${st(2.4)}/><path d="M-14 -3 L14 -3" stroke="${edge}" stroke-width="2.5" stroke-linecap="round" opacity=".8"/></g>`;
+  return `<g ${tf}><rect x="-9" y="-8" width="18" height="15" rx="3.5" fill="${color}" ${st(2.4)}/><path d="M-6 -5 L6 -5" stroke="${edge}" stroke-width="2.5" stroke-linecap="round" opacity=".8"/></g>`;
+}
+
+// Small color helpers.
+function hexToRgb(h) { return [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16)); }
+function mixColor(a, b, q) { const x = hexToRgb(a), y = hexToRgb(b); return `rgb(${x.map((v, i) => Math.round(lerp(v, y[i], q))).join(",")})`; }
+function shade(h) { if (!h.startsWith("#")) return h; const c = hexToRgb(h); return `rgb(${c.map(v => Math.round(v * 0.78)).join(",")})`; }
+// Which piece each food naturally cuts into for slicing.
+function sliceKind(F) { return ["round", "long", "mushroom"].includes(F.type) ? "coin" : F.type === "leafy" ? "bit" : "strip"; }
+
+// ---------- Actions: each works with any food from FOODS ----------
+const at = (x, y, s = 1, r = 0) => `transform="translate(${x} ${y}) rotate(${r}) scale(${s})"`;
+const steam = (t, xs, y0 = 100, k = 0.6) => xs.map((x, i) => { const p = (t * k + i / xs.length) % 1; return `<path d="M${x} ${y0 - p * 44} c-6-8 6-12 0-20" fill="none" ${st(3.5)} opacity="${1 - p}"/>`; }).join("");
+const sizzle = (t, cx, cy, w) => [0, 1, 2, 3].map(i => { const p = (t * 2 + i / 4) % 1, x = cx - w / 2 + (i + 0.5) * w / 4; return `<path d="M${x} ${cy - 6 - p * 18} l${i % 2 ? 4 : -4} -6" ${st(2.6)} opacity="${1 - p}"/>`; }).join("");
+// A meal's dish color on its pots and pans (Bryce, Oct 23): the picture
+// name ends in "@F7C94B". Set by the runner; empty = the normal colors.
+var ACCENT = {};
+const pot = (inner = "") => `<path d="M60 112 L300 112 L290 204 L70 204 Z" fill="${ACCENT.pot || "#fff"}" ${st()}/><path d="M50 112 L310 112" ${st(5)}/>
+  <path d="M40 124 C26 124 26 144 42 142 M320 124 C334 124 334 144 318 142" fill="none" ${st(4)}/>${inner}`;
+const panSide = (inner = "") => `<path d="M60 170 C60 192 300 192 300 170 L304 150 L56 150 Z" fill="${ACCENT.pan || "#4A4A4A"}" ${st()}/>${inner}
+  <path d="M300 160 L352 138" ${st(9)}/><path d="M300 160 L352 138" stroke="#3B2A1E" stroke-width="5" stroke-linecap="round"/>`;
+// Light gray bowl so white things (milk, cream, egg whites) still show.
+const bowlSide = (fill, inner = "") => `<path d="M60 120 C64 214 296 214 300 120 Z" fill="${ACCENT.bowl || "#E4E0D6"}" ${st()}/>${inner}<path d="M50 120 L310 120" ${st(5)}/>`;
+const burner = (t, big = 1) => flames(t, big, 226);
+
+const ACTIONS = {
+  // Cutting on the board
+  dice: { dur: 2.4, draw(t, F) {
+    let s = board();
+    const cuts = Math.floor(t / 0.3), p = (t % 0.3) / 0.3;
+    const shrink = Math.max(0.35, 1 - cuts * 0.08);
+    s += `<g ${at(130, 136, shrink)}>${whole(F)}</g>`;
+    for (let i = 0; i < Math.min(cuts * 2 + 2, 16); i++) s += piece(F, "cube", 238 + (i % 4) * 22 + (Math.floor(i / 4) % 2) * 10, 196 - Math.floor(i / 4) * 16, (i * 37) % 20 - 10);
+    const down = p < 0.45 ? ease(p / 0.45) : 1 - ease((p - 0.45) / 0.55);
+    return s + knife(130 + 60 * shrink - 6, lerp(40, 150, down), 90, 110);
+  } },
+  chop: { dur: 2.2, draw(t, F) {
+    let s = board();
+    const cuts = Math.floor(t / 0.28), p = (t % 0.28) / 0.28;
+    s += `<g ${at(126, 134, Math.max(0.4, 1 - cuts * 0.07))}>${whole(F)}</g>`;
+    for (let i = 0; i < Math.min(cuts * 2 + 2, 14); i++) s += piece(F, "chunk", 236 + (i % 4) * 24, 196 - Math.floor(i / 4) * 16 + (i % 2) * 4, i * 53);
+    const down = p < 0.4 ? ease(p / 0.4) : 1 - ease((p - 0.4) / 0.6);
+    return s + knife(190 - cuts * 3, lerp(40, 150, down), 90, 110);
+  } },
+  slice: { dur: 2.4, draw(t, F) {
+    let s = board();
+    const cuts = Math.floor(t / 0.34), p = (t % 0.34) / 0.34, kind = sliceKind(F);
+    const clipX = 200 - cuts * 9;
+    s += `<clipPath id="sl"><rect x="0" y="0" width="${clipX}" height="300"/></clipPath><g clip-path="url(#sl)"><g ${at(140, 134)}>${whole(F)}</g></g>`;
+    for (let i = 0; i < cuts; i++) s += piece(F, kind, 226 + i * 15, 136 + (i % 2) * 6, kind === "strip" ? 80 : 10 + i * 4);
+    const down = p < 0.5 ? ease(p / 0.5) : 1 - ease((p - 0.5) / 0.5);
+    return s + knife(clipX, lerp(40, 150, down), 90, 110);
+  } },
+  mince: { dur: 2, draw(t, F) {
+    let s = board();
+    for (let i = 0; i < 46; i++) { const a = i * 2.39996, r = Math.sqrt(i) * 9; s += piece(F, "bit", 180 + Math.cos(a) * r * 1.5, 140 + Math.sin(a) * r * 0.8, i * 37); }
+    const rock = Math.sin(t * 12) * 10, sweep = Math.sin(t * 3) * 30;
+    return s + knife(110 + sweep * 0.4, 136, 180 + rock, 170);
+  } },
+  grate: { dur: 1.2, draw(t, F) {
+    // a box grater with the food rubbing up and down, shreds piling below
+    let s = `<path d="M60 222 L300 222" ${st(3)}/>`;
+    for (let i = 0; i < 22; i++) { const x = 130 + ((i * 47) % 110), y = 214 - Math.floor(i / 6) * 7; s += piece(F, "shred", x, y, (i * 61) % 180, 0.9); }
+    const fall = (t * 2.2) % 1;
+    for (let i = 0; i < 4; i++) s += piece(F, "shred", 176 + i * 8, 150 + ((fall + i / 4) % 1) * 60, i * 40, 0.8);
+    s += `<path d="M150 40 L210 40 L222 196 L138 196 Z" fill="#D9DEE2" ${st()}/><path d="M168 40 C168 24 192 24 192 40" fill="none" ${st(5)}/>`;
+    for (let r = 0; r < 6; r++) for (let c = 0; c < 4; c++) s += `<path d="M${156 + c * 13 + r * 0.8} ${62 + r * 22} l7 -4" ${st(2.4)}/>`;
+    const y = 100 + Math.sin(t / 1.2 * Math.PI * 2) * 34;
+    s += `<g ${at(262, y, 0.62, -8)}>${whole(F)}</g><g ${at(300, y - 2, 1.2)}>${fist()}</g>`;
+    return s;
+  } },
+  peel: { dur: 2, draw(t, F) {
+    let s = board();
+    const p = (t / 2);
+    s += `<g ${at(170, 134)}>${whole(F)}</g>`;
+    // the peeled strip showing the inside
+    s += `<path d="M110 ${126 + p * 4} L${110 + p * 120} 120 L${110 + p * 120} 138 L110 140 Z" fill="${F.inner}" opacity=".95"/>`;
+    // curling peel falling off
+    for (let i = 0; i < 3; i++) { const q = (p * 3 + i / 3) % 1; s += `<path d="M${120 + i * 30} ${150 + q * 50} c10 -8 20 8 30 0" fill="none" stroke="${INK}" stroke-width="7" stroke-linecap="round" opacity="${1 - q}"/><path d="M${120 + i * 30} ${150 + q * 50} c10 -8 20 8 30 0" fill="none" stroke="${F.fill}" stroke-width="4" stroke-linecap="round" opacity="${1 - q}"/>`; }
+    // Y-peeler moving along
+    const x = 110 + p * 120;
+    s += `<g ${at(x, 112)}><path d="M-12 0 L12 0" ${st(4)}/><path d="M-12 0 L-6 -24 M12 0 L6 -24" ${st(4)}/><rect x="-7" y="-70" width="14" height="48" rx="6" fill="#F0643C" ${st(3)}/><g ${at(0, -56, 1)}>${fist()}</g></g>`;
+    return s;
+  } },
+  pound: { dur: 1, draw(t, F) {
+    let s = board();
+    const hit = Math.abs(Math.sin(t / 1 * Math.PI)), flat = 1 + (1 - hit) * 0.08;
+    s += `<g ${at(180, 150, 1)} ><g transform="scale(${flat} ${1 / flat})">${whole(F)}</g></g>`;
+    s += `<g ${at(196, lerp(40, 116, 1 - hit))}><rect x="-28" y="-16" width="56" height="32" rx="6" fill="#B9BEC3" ${st(3.5)}/><path d="M28 -4 L96 -40" stroke="#8B5A2B" stroke-width="10" stroke-linecap="round"/><path d="M28 -4 L96 -40" fill="none" ${st(3)} opacity="0"/><g ${at(82, -32)}>${fist()}</g></g>`;
+    if (hit < 0.12) s += `<path d="M106 120 l-14 -6 M104 150 l-16 0 M256 120 l14 -6 M258 150 l16 0" ${st(3)}/>`;
+    return s;
+  } },
+  tear: { dur: 1.6, draw(t, F) {
+    let s = bowlSide("#fff", `<path d="M76 140 C80 200 280 200 284 140 Z" fill="#E9F2C7"/>`);
+    const p = (t / 1.6), split = ease(clamp(p * 2)) * 18;
+    for (let i = 0; i < 8; i++) s += piece(F, "bit", 110 + i * 18, 150 + (i % 3) * 8, i * 40, 2.2);
+    s += `<g ${at(180 - split, 70 + p * 10)}><path d="M0 0 C-30 -10 -34 -40 -10 -50 L0 -20 Z" fill="${F.fill}" ${st(3)}/>${fist()}</g>`;
+    s += `<g ${at(180 + split, 70 + p * 10)}><path d="M0 0 C30 -10 34 -40 10 -50 L0 -20 Z" fill="${F.fill}" ${st(3)}/><g transform="scale(-1 1)">${fist()}</g></g>`;
+    return s;
+  } },
+  shred: { dur: 1.4, draw(t, F) {
+    // two forks pulling cooked meat apart
+    let s = `<ellipse cx="180" cy="160" rx="140" ry="40" fill="#fff" ${st()}/>`;
+    for (let i = 0; i < 16; i++) s += piece(F, "shred", 110 + (i % 8) * 20, 150 + Math.floor(i / 8) * 18, (i * 47) % 60 - 30, 1.2);
+    const pull = Math.sin(t / 1.4 * Math.PI * 2) * 20;
+    for (const [x, d] of [[150 - pull, -1], [210 + pull, 1]]) s += `<g ${at(x, 120, 1, d * 20)}><path d="M-8 30 L-8 0 M0 30 L0 0 M8 30 L8 0 M-10 0 L10 0 M0 0 L0 -70" ${st(3.5)}/></g>`;
+    return s;
+  } },
+
+  // In a bowl
+  whisk: { dur: 1.1, draw(t, F) {
+    let s = bowlSide("#fff", `<path d="M74 136 C80 200 280 200 286 136 Z" fill="${F.inner}" ${st(2.5)}/>`);
+    const sway = Math.sin(t / 1.1 * Math.PI * 2);
+    s += `<g ${at(180 + sway * 44, 50, 1, sway * 12)}><path d="M0 50 C-14 74 -10 96 0 98 C10 96 14 74 0 50" fill="none" ${st(3.5)}/><path d="M0 50 C-6 74 -4 92 0 98 C4 92 6 74 0 50" fill="none" ${st(3)}/><path d="M0 50 L0 18" ${st(7)}/><g ${at(0, 10)}>${fist()}</g></g>`;
+    return s + `<path d="M76 98 l14 6 M284 98 l-14 6" ${st(3)} opacity="${Math.abs(sway)}"/>`;
+  } },
+  mash: { dur: 1.4, draw(t, F) {
+    const press = Math.abs(Math.sin(t / 1.4 * Math.PI));
+    let s = bowlSide("#fff", `<path d="M74 146 C80 200 280 200 286 146 Z" fill="${F.inner}"/>`);
+    for (let i = 0; i < 7; i++) s += piece(F, "chunk", 110 + i * 24, 152 + (i % 2) * 8, i * 50, lerp(1.1, 0.6, (t / 1.4)));
+    s += `<g ${at(180, lerp(60, 128, press))}><path d="M-40 12 L40 12 M-30 12 C-30 2 -20 0 -16 12 M-6 12 C-6 2 6 2 6 12 M16 12 C20 0 30 2 30 12" fill="none" ${st(4)}/><path d="M0 12 L0 -60" ${st(7)}/><g ${at(0, -56)}>${fist()}</g></g>`;
+    return s;
+  } },
+  toss: { dur: 1.6, draw(t, F) {
+    let s = bowlSide("#fff");
+    for (let i = 0; i < 9; i++) {
+      const ph = (t / 1.6 + i / 9) % 1, h = Math.sin(ph * Math.PI) * (40 + (i % 3) * 14);
+      s += piece(F, F.type === "leafy" ? "bit" : "chunk", 100 + i * 20, 140 - h, ph * 360, F.type === "leafy" ? 2.4 : 1);
+    }
+    return s;
+  } },
+  marinate: { dur: 3, draw(t, F) {
+    let s = bowlSide("#fff", `<path d="M${74} ${150 + Math.sin(t * 2) * 3} C120 ${140 + Math.sin(t * 2 + 1) * 4} 240 ${160 + Math.sin(t * 2) * 4} 286 ${148} C280 200 80 200 74 150 Z" fill="#B5473A" opacity=".55"/>`);
+    for (let i = 0; i < 6; i++) s += piece(F, "chunk", 110 + i * 28, 154 + Math.sin(t * 2 + i) * 4, i * 40, 1.3);
+    // a little fridge clock above
+    return s + `<g ${at(300, 52)}><circle r="20" fill="#fff" ${st(3.5)}/><path d="M0 0 L0 -12 M0 0 L${Math.cos(t * 2.1 - 1.57) * 10} ${Math.sin(t * 2.1 - 1.57) * 10}" ${st(3.5)}/></g>`;
+  } },
+  coat: { dur: 2.2, draw(t, F) {
+    let s = `<ellipse cx="180" cy="176" rx="130" ry="34" fill="#fff" ${st()}/><ellipse cx="180" cy="172" rx="100" ry="22" fill="#F4EFDF"/>`;
+    const p = t / 2.2, dip = Math.sin(clamp(p * 1.4) * Math.PI);
+    const coated = p > 0.5;
+    s += `<g ${at(180, lerp(80, 150, dip), 0.6, p * 30)}>${whole(F)}${coated ? `<g opacity=".9">${[...Array(14)].map((_, i) => `<circle cx="${-50 + (i * 31) % 100}" cy="${-24 + (i * 17) % 50}" r="3" fill="#fff"/>`).join("")}</g>` : ""}</g>`;
+    for (let i = 0; i < 10; i++) { const q = (p * 2 + i / 10) % 1; if (dip > 0.6) s += `<circle cx="${130 + i * 10}" cy="${150 - q * 30}" r="2.5" fill="#fff" ${st(1.4)} opacity="${1 - q}"/>`; }
+    return s;
+  } },
+  crack: { dur: 2, draw(t, F) {
+    let s = bowlSide("#fff");
+    const p = t / 2, split = ease(seg(p, 0.35, 0.6)) * 18;
+    if (p > 0.5) { const drop = ease(seg(p, 0.5, 0.8)); s += `<ellipse cx="180" cy="${lerp(90, 150, drop)}" rx="${lerp(10, 40, drop)}" ry="${lerp(14, 12, drop)}" fill="#FFFDF5" ${st(2.4)}/><circle cx="180" cy="${lerp(92, 148, drop)}" r="11" fill="#F7C94B" ${st(2.4)}/>`; }
+    const tap = p < 0.35 ? Math.abs(Math.sin(p / 0.35 * Math.PI * 2)) * 12 : 0;
+    s += `<g ${at(180 - split, 60 + tap)}><path d="M0 -34 C-20 -34 -28 0 -26 14 L-14 8 L-6 16 L0 10 Z" fill="${FOODS.egg.fill}" ${st(3)}/></g>`;
+    s += `<g ${at(180 + split, 60 + tap)}><path d="M0 -34 C20 -34 28 0 26 14 L14 8 L6 16 L0 10 Z" fill="${FOODS.egg.fill}" ${st(3)}/></g>`;
+    return s;
+  } },
+
+  // On the stove
+  stir: { dur: 2, draw(t, F) {
+    let s = burner(t) + pot(`<path d="M66 136 L294 136 L288 202 L72 202 Z" fill="${F.liquid || "#E8613C"}" opacity=".85"/><path d="M66 136 L294 136" ${st(3)}/>`);
+    for (let i = 0; i < 6; i++) s += piece(F, "chunk", 100 + i * 32, 146 + Math.sin(t * 3 + i) * 4, i * 60 + t * 40);
+    const a = t / 2 * Math.PI * 2, x = 180 + Math.cos(a) * 60, y = 150 + Math.sin(a) * 10;
+    s += steam(t, [140, 180, 220], 100);
+    return s + `<g ${at(x, y, 1, Math.cos(a) * 14)}><ellipse rx="10" ry="14" fill="#C9874A" ${st(3)}/><path d="M0 -12 L0 -110" stroke="#8B5A2B" stroke-width="8" stroke-linecap="round"/><g ${at(0, -96)}>${fist()}</g></g>`;
+  } },
+  boil: { dur: 2, draw(t, F) {
+    let s = burner(t) + pot(`<path d="M66 128 L294 128 L288 202 L72 202 Z" fill="#BFE0F7"/><path d="M66 128 L294 128" ${st(3)}/>`);
+    for (let i = 0; i < 12; i++) { const q = (t * 0.9 + i / 12) % 1; s += `<circle cx="${84 + ((i * 53) % 190)}" cy="${200 - q * 70}" r="${3 + q * 6}" fill="#fff" ${st(2)}/>`; }
+    for (let i = 0; i < (F.type === "egg" ? 3 : 5); i++) {
+      const x = 110 + i * (F.type === "egg" ? 56 : 34) + Math.sin(t * 4 + i) * 6, y = 160 + Math.cos(t * 5 + i) * 14;
+      s += F.type === "egg" ? `<g ${at(x + 16, y, 0.38, Math.sin(t * 3 + i) * 20)}>${whole(F)}</g>`
+        : piece(F, F.type === "long" ? "coin" : "chunk", x, y, t * 120 + i * 50);
+    }
+    return s + steam(t, [130, 180, 230], 104, 0.9);
+  } },
+  saute: { dur: 1.4, draw(t, F) {
+    let s = burner(t) + panSide();
+    for (let i = 0; i < 8; i++) {
+      const ph = (t / 1.4 + i / 8) % 1, h = Math.max(0, Math.sin(ph * Math.PI * 2)) * 34;
+      s += piece(F, F.type === "leafy" ? "bit" : "chunk", 100 + i * 22, 156 - h, ph * 360, F.type === "leafy" ? 2 : 1);
+    }
+    s += sizzle(t, 180, 150, 180);
+    return s + `<g ${at(250, 120, 1, -30 + Math.sin(t * 4) * 10)}><path d="M-20 0 L20 0 L22 -6 L-18 -6 Z" fill="#D9DEE2" ${st(3)}/><path d="M20 -4 L70 -40" ${st(6)}/></g>`;
+  } },
+  sear: { dur: 3, draw(t, F) {
+    let s = burner(t) + panSide();
+    const p = t / 3, cooked = clamp(p * 1.3);
+    s += `<g ${at(180, 136, 0.9)}>${whole(F, cooked)}</g>`;
+    s += sizzle(t, 180, 120, 150) + steam(t, [150, 190, 220], 108, 0.7);
+    return s;
+  } },
+  melt: { dur: 3, draw(t, F) {
+    let s = burner(t, 0.6) + panSide();
+    const p = (t / 3), m = ease(clamp(p * 1.2));
+    s += `<ellipse cx="180" cy="160" rx="${lerp(20, 90, m)}" ry="${lerp(4, 8, m)}" fill="${F.fill}" ${st(2.6)} opacity="${m}"/>`;
+    s += `<g ${at(180, lerp(128, 152, m), lerp(0.55, 0.15, m))}>${whole(F)}</g>`;
+    return s + `<path d="M150 150 q4 -8 8 0 M200 152 q4 -8 8 0" ${st(2.4)} opacity="${m}"/>`;
+  } },
+  simmer: { dur: 3, draw(t, F) {
+    let s = burner(t, 0.5) + pot(`<path d="M66 136 L294 136 L288 202 L72 202 Z" fill="${F.liquid || "#E8613C"}" opacity=".85"/><path d="M66 136 L294 136" ${st(3)}/>`);
+    for (let i = 0; i < 5; i++) s += piece(F, "chunk", 100 + i * 40, 160 + Math.sin(t * 1.5 + i) * 3, i * 70);
+    for (let i = 0; i < 4; i++) { const q = (t * 0.4 + i / 4) % 1; s += `<circle cx="${100 + i * 52}" cy="${196 - q * 56}" r="${2 + q * 2}" fill="#fff" ${st(1.6)} opacity="${1 - q * 0.5}"/>`; }
+    return s + steam(t, [150, 210], 104, 0.4);
+  } },
+
+  // Pot and pan versions of everyday steps, so a pot step never shows a
+  // skillet (Research/PLAN-picture-story.md, Bryce Oct 23). Any food.
+  intopot: { dur: 2.4, draw(t, F) {
+    // The food drops off a plate into the pot and settles.
+    let s = burner(t, 0.6) + pot(`<path d="M66 150 L294 150 L289 202 L71 202 Z" fill="#F1E3C8" opacity=".9"/><path d="M66 150 L294 150" ${st(3)}/>`);
+    const p = t / 2.4, tip = ease(clamp(p / 0.3)), fall = clamp((p - 0.25) / 0.45);
+    for (let i = 0; i < 6; i++) {
+      const q = clamp(fall * 1.5 - i * 0.1), x = lerp(120 + i * 8, 100 + i * 32, q), y = lerp(70, 160 + (i % 2) * 6, q * q);
+      s += piece(F, F.type === "leafy" ? "bit" : "chunk", x, y, i * 60 + q * 200);
+    }
+    if (fall > 0.6) s += `<path d="M120 146 q-10 -14 -18 -6 M230 146 q10 -14 18 -6" fill="none" ${st(3)} opacity="${1 - fall}"/>`;
+    return s + `<g transform="translate(150 ${lerp(60, 52, tip)}) rotate(${lerp(0, 30, tip)})">${plate(0, 0, 0.75)}</g>` + steam(t, [150, 210], 104, 0.4);
+  } },
+  potmelt: { dur: 3, draw(t, F) {
+    let s = burner(t, 0.5) + pot();
+    const m = ease(clamp(t / 3 * 1.2));
+    s += `<path d="M${lerp(140, 76, m)} 196 Q180 ${lerp(194, 186, m)} ${lerp(220, 284, m)} 196 L280 202 L80 202 Z" fill="${F.fill}" opacity="${0.35 + m * 0.6}" ${st(2.5)}/>`;
+    s += `<g ${at(180, lerp(150, 188, m), lerp(0.55, 0.12, m))}>${whole(F)}</g>`;
+    return s + `<path d="M150 188 q4 -8 8 0 M200 190 q4 -8 8 0" ${st(2.4)} opacity="${m}"/>`;
+  } },
+  potpour: { dur: 2.2, draw(t, F) {
+    const color = F.liquid || F.inner;
+    let s = burner(t, 0.5) + pot(`<path d="M68 ${178 - t * 10} L292 ${178 - t * 10} L289 202 L71 202 Z" fill="${color}" opacity=".9"/><path d="M68 ${178 - t * 10} L292 ${178 - t * 10}" ${st(3)}/>`);
+    s += `<path d="M196 40 C194 80 190 120 186 ${172 - t * 10}" fill="none" stroke="${INK}" stroke-width="12" stroke-linecap="round"/><path d="M196 40 C194 80 190 120 186 ${172 - t * 10}" fill="none" stroke="${color}" stroke-width="7" stroke-linecap="round"/>`;
+    return s + `<g ${at(228, 24, 1, -50)}><path d="M-26 -30 L26 -30 L22 30 L-22 30 Z" fill="#fff" ${st(3.5)}/><path d="M-24 -6 L24 -6 L22 30 L-22 30 Z" fill="${color}"/><path d="M26 -20 C40 -20 40 10 24 10" fill="none" ${st(3.5)}/></g>`;
+  } },
+  panpour: { dur: 2.2, draw(t, F) {
+    const color = F.liquid || F.inner;
+    let s = burner(t, 0.7) + panSide(`<path d="M74 ${168 - t * 4} C80 186 280 186 286 ${168 - t * 4} Z" fill="${color}" ${st(2.5)}/>`);
+    s += `<path d="M196 50 C194 90 190 120 186 ${162 - t * 4}" fill="none" stroke="${INK}" stroke-width="12" stroke-linecap="round"/><path d="M196 50 C194 90 190 120 186 ${162 - t * 4}" fill="none" stroke="${color}" stroke-width="7" stroke-linecap="round"/>`;
+    s += sizzle(t, 180, 156, 160);
+    return s + `<g ${at(228, 34, 1, -50)}><path d="M-26 -30 L26 -30 L22 30 L-22 30 Z" fill="#fff" ${st(3.5)}/><path d="M-24 -6 L24 -6 L22 30 L-22 30 Z" fill="${color}"/><path d="M26 -20 C40 -20 40 10 24 10" fill="none" ${st(3.5)}/></g>`;
+  } },
+  pansimmer: { dur: 3, draw(t, F) {
+    let s = burner(t, 0.5) + panSide(`<path d="M72 164 C80 184 280 184 288 164 Z" fill="${F.liquid || "#E8613C"}" ${st(2.5)}/>`);
+    for (let i = 0; i < 5; i++) s += piece(F, "chunk", 108 + i * 34, 166 + Math.sin(t * 1.5 + i) * 2, i * 70);
+    for (let i = 0; i < 4; i++) { const q = (t * 0.5 + i / 4) % 1; s += `<circle cx="${110 + i * 46}" cy="${178 - q * 16}" r="${2 + q * 2}" fill="#fff" ${st(1.6)} opacity="${1 - q}"/>`; }
+    return s + steam(t, [150, 210], 120, 0.4);
+  } },
+
+  // Oven
+  bake: { dur: 3, draw(t, F) {
+    let s = `<rect x="70" y="40" width="220" height="190" rx="16" fill="#fff" ${st()}/><rect x="70" y="40" width="220" height="40" rx="16" fill="#E0DCD1" ${st()}/>
+      <circle cx="110" cy="60" r="11" fill="#fff" ${st(3)}/><circle cx="250" cy="60" r="11" fill="#fff" ${st(3)}/><path d="M250 60 l${Math.sin(t * 2.1) * 8} ${-Math.cos(t * 2.1) * 8}" ${st(3)}/>`;
+    s += `<rect x="96" y="98" width="168" height="104" rx="12" fill="#F7C94B" opacity="${0.55 + 0.25 * Math.sin(t * 4)}" ${st()}/>`;
+    s += `<path d="M110 176 L250 176 L244 194 L116 194 Z" fill="#fff" ${st(3)}/><g ${at(180, 156, 0.5)}>${whole(F, clamp(t / 3))}</g>`;
+    return s + `<path d="M110 214 L250 214" ${st(5)}/>`;
+  } },
+
+  // Liquids and finishing
+  pour: { dur: 2.2, draw(t, F) {
+    const color = F.liquid || F.inner;
+    let s = bowlSide("#fff", `<path d="M74 ${160 - t * 6} C80 200 280 200 286 ${160 - t * 6} Z" fill="${color}" ${st(2.5)}/>`);
+    s += `<path d="M190 70 C188 100 184 120 182 ${150 - t * 6}" fill="none" stroke="${INK}" stroke-width="12" stroke-linecap="round"/><path d="M190 70 C188 100 184 120 182 ${150 - t * 6}" fill="none" stroke="${color}" stroke-width="7" stroke-linecap="round"/>`;
+    return s + `<g ${at(220, 50, 1, -50)}><path d="M-26 -30 L26 -30 L22 30 L-22 30 Z" fill="#fff" ${st(3.5)}/><path d="M-24 -6 L24 -6 L22 30 L-22 30 Z" fill="${color}"/><path d="M26 -20 C40 -20 40 10 24 10" fill="none" ${st(3.5)}/></g>`;
+  } },
+  sprinkle: { dur: 1.6, draw(t, F) {
+    let s = board() + `<g ${at(180, 160, 0.9)}>${whole(F)}</g>`;
+    for (let i = 0; i < 12; i++) { const q = (t / 1.6 + i / 12) % 1; s += `<rect x="${170 + (i % 5) * 6 - 12}" y="${70 + q * 70}" width="4" height="4" fill="${i % 3 ? "#fff" : INK}" stroke="${INK}" stroke-width="1"/>`; }
+    return s + `<g ${at(180 + Math.sin(t * 9) * 6, 50, 1, 180)}>${fist()}</g>`;
+  } },
+  squeeze: { dur: 1.6, draw(t, F) {
+    let s = bowlSide("#fff", `<path d="M74 170 C80 200 280 200 286 170 Z" fill="${F.inner}"/>`);
+    const sq = Math.abs(Math.sin(t / 1.6 * Math.PI)), k = 1 - sq * 0.2;
+    s += `<g ${at(180, 70)}><g transform="scale(${1 / k} ${k})"><path d="M-40 0 C-40 -30 40 -30 40 0 Z" fill="${F.fill}" ${st(3.5)}/><path d="M-32 0 L32 0" stroke="${F.inner}" stroke-width="8"/></g>
+      <g ${at(-38, -10)}>${fist()}</g><g ${at(38, -10)} ><g transform="scale(-1 1)">${fist()}</g></g></g>`;
+    for (let i = 0; i < 4; i++) { const q = (t * 1.2 + i / 4) % 1; s += `<path d="M${170 + i * 7} ${90 + q * 70} c-3 4 3 4 0 -6 Z" fill="${F.inner}" ${st(1.6)} opacity="${sq > 0.3 ? 1 - q : 0}"/>`; }
+    return s;
+  } },
+  zest: { dur: 1, draw(t, F) {
+    let s = bowlSide("#fff");
+    for (let i = 0; i < 14; i++) s += `<path d="M${120 + (i * 37) % 120} ${150 + (i % 3) * 6} l6 -2" stroke="${F.fill}" stroke-width="4" stroke-linecap="round"/>`;
+    s += `<g ${at(180, 70, 1, -14)}><rect x="-110" y="-8" width="170" height="16" rx="4" fill="#D9DEE2" ${st(3)}/><rect x="60" y="-9" width="50" height="18" rx="7" fill="#3B2A1E" ${st(3)}/></g>`;
+    const x = 160 + Math.sin(t / 1 * Math.PI * 2) * 44;
+    s += `<g ${at(x, 46, 0.5)}>${whole(F)}</g>`;
+    for (let i = 0; i < 3; i++) { const q = (t * 2 + i / 3) % 1; s += `<path d="M${x - 6 + i * 6} ${80 + q * 60} l5 -2" stroke="${F.fill}" stroke-width="4" stroke-linecap="round" opacity="${1 - q}"/>`; }
+    return s;
+  } },
+  drain: { dur: 1.6, draw(t, F) {
+    let s = `<path d="M40 150 L320 150 L310 232 L50 232 Z" fill="#D9DEE2" ${st()}/><path d="M30 150 L330 150" ${st(5)}/>`;
+    s += `<path d="M100 110 C102 168 258 168 260 110 Z" fill="#9AA4AC" ${st(3.5)}/><path d="M92 110 L268 110" ${st(4)}/>`;
+    for (let i = 0; i < 7; i++) s += piece(F, F.type === "long" ? "coin" : "chunk", 130 + i * 18, 120 + (i % 2) * 8, i * 40);
+    for (let i = 0; i < 5; i++) { const q = (t + i / 5) % 1; s += `<path d="M${140 + i * 20} ${160 + q * 50} l0 8" stroke="#7FB4F0" stroke-width="5" stroke-linecap="round" opacity="${1 - q}"/>`; }
+    return s;
+  } },
+  spread: { dur: 1.6, draw(t, F) {
+    let s = board() + `<rect x="110" y="86" width="140" height="110" rx="20" fill="#F6E3B8" ${st()}/>`;
+    const p = (t / 1.6), w = lerp(20, 120, (Math.sin(p * Math.PI * 2 - 1.57) + 1) / 2);
+    s += `<path d="M${180 - w / 2} 100 C${180 - w / 2} 180 ${180 + w / 2} 180 ${180 + w / 2} 100 Z" fill="${F.liquid || F.fill}" opacity=".9"/>`;
+    const x = 180 + Math.sin(p * Math.PI * 2) * 50;
+    return s + `<g ${at(x, 130, 1, 70)}><rect x="-6" y="-60" width="12" height="60" rx="5" fill="#D9DEE2" ${st(3)}/><rect x="-7" y="-100" width="14" height="40" rx="6" fill="#3B2A1E" ${st(3)}/></g>`;
+  } },
+  roll: { dur: 1.6, draw(t, F) {
+    const p = (Math.sin(t / 1.6 * Math.PI * 2) + 1) / 2;
+    let s = board() + `<ellipse cx="180" cy="150" rx="${70 + p * 50}" ry="${44 + p * 20}" fill="${F.fill}" ${st()}/>`;
+    return s + `<g ${at(180, lerp(120, 180, p))}><rect x="-110" y="-12" width="220" height="24" rx="12" fill="#D9A56B" ${st(3.5)}/><rect x="-150" y="-7" width="40" height="14" rx="6" fill="#B5814A" ${st(3)}/><rect x="110" y="-7" width="40" height="14" rx="6" fill="#B5814A" ${st(3)}/></g>`;
+  } },
+  knead: { dur: 1.4, draw(t, F) {
+    const push = Math.abs(Math.sin(t / 1.4 * Math.PI));
+    let s = board() + `<g ${at(180, 150)}><g transform="scale(${1 + push * 0.2} ${1 - push * 0.15})">${whole(FOODS.dough)}</g></g>`;
+    return s + `<g ${at(190 + push * 20, lerp(76, 112, push), 1.5)}>${fist()}</g>`;
+  } },
+  blend: { dur: 1.2, draw(t, F) {
+    let s = `<rect x="130" y="196" width="100" height="34" rx="8" fill="#3B3B3B" ${st()}/><circle cx="180" cy="213" r="7" fill="#F0643C" ${st(2)}/>`;
+    s += `<path d="M138 196 L130 50 L230 50 L222 196 Z" fill="#E8F3FB" ${st()}/><rect x="126" y="38" width="108" height="16" rx="6" fill="#3B3B3B" ${st(3)}/>`;
+    const a = t * 12;
+    s += `<path d="M142 ${90 + Math.sin(a) * 6} Q180 ${70 + Math.cos(a) * 10} 218 ${90 - Math.sin(a) * 6} L222 192 L138 192 Z" fill="${F.liquid || F.inner}" opacity=".95"/>`;
+    for (let i = 0; i < 6; i++) s += piece(F, "bit", 180 + Math.cos(a + i) * 24, 150 + Math.sin(a * 0.8 + i) * 22, a * 50, 2);
+    return s + `<path d="M108 80 l-12 -4 M108 110 l-14 0 M252 80 l12 -4 M252 110 l14 0" ${st(3)}/>`;
+  } },
+  // Cut-up meat browning in the pan: pieces sizzle and slowly go golden,
+  // a spatula nudges them now and then.
+  brownbits: { dur: 4, draw(t, F, shape = "cube") {
+    let s = burner(t) + panSide();
+    const p = t / 4, cooked = clamp(p * 1.25);
+    const spots = shape === "strip"
+      ? [[96, 158, 8], [134, 154, -6], [172, 160, 4], [210, 155, -10], [248, 159, 6], [118, 166, -4], [160, 168, 10], [204, 167, -8], [242, 168, 2]]
+      : [[96, 158, 8], [124, 154, -10], [152, 160, 14], [180, 155, -4], [208, 159, 20], [236, 156, -16], [262, 160, 6], [110, 167, -6], [140, 168, 10], [170, 168, -12], [200, 167, 4], [230, 168, -8], [256, 167, 12]];
+    const nudge = Math.max(0, Math.sin((p - 0.45) * Math.PI * 5)) * (p > 0.45 && p < 0.65 ? 1 : 0);
+    spots.forEach(([x, y, r], i) => {
+      const jig = Math.sin(t * 9 + i) * 0.8 - (nudge * ((i % 3) - 1) * 6);
+      s += bit(F, shape, x + jig, y - Math.abs(jig) * 0.4, r, cooked);
+    });
+    s += sizzle(t, 180, 150, 190) + steam(t, [140, 200, 250], 112, 0.5);
+    const sx = lerp(290, 200, nudge);
+    return s + `<g ${at(sx, 128, 1, -24)}><path d="M-24 0 L24 0 L26 -7 L-22 -7 Z" fill="#D9DEE2" ${st(3)}/><path d="M24 -4 L76 -44" ${st(6)}/></g>`;
+  } },
+  // Turning cut-up meat: a spatula sweeps under, the pieces tumble over and
+  // show their golden side.
+  turnbits: { dur: 2.4, draw(t, F, shape = "cube") {
+    let s = burner(t) + panSide();
+    const p = t / 2.4;
+    const spots = shape === "strip"
+      ? [[100, 158, 8], [140, 155, -6], [180, 160, 4], [220, 156, -10], [258, 159, 6], [124, 167, -4], [168, 168, 10], [212, 167, -8], [248, 168, 2]]
+      : [[100, 158, 8], [128, 154, -10], [156, 160, 14], [184, 155, -4], [212, 159, 20], [240, 156, -16], [264, 160, 6], [114, 167, -6], [144, 168, 10], [174, 168, -12], [204, 167, 4], [234, 168, -8]];
+    // The spatula sweeps left to right; each piece flips as it passes.
+    const sweep = lerp(70, 290, clamp((p - 0.1) / 0.6));
+    spots.forEach(([x, y, r], i) => {
+      const local = clamp((sweep - x + 20) / 40);
+      const hop = Math.sin(local * Math.PI) * 26;
+      const flipScale = Math.cos(local * Math.PI);
+      const goldenUp = local > 0.5;
+      s += `<g transform="translate(${x} ${y - hop}) scale(1 ${Math.max(0.15, Math.abs(flipScale))})">${bit(F, shape, 0, 0, r + local * 180, goldenUp ? 0.95 : 0.35)}</g>`;
+    });
+    s += sizzle(t, 180, 150, 190);
+    const show = p > 0.05 && p < 0.8;
+    if (show) s += `<g ${at(sweep - 10, 150, 1, -14)}><path d="M-26 0 L26 0 L28 -7 L-24 -7 Z" fill="#D9DEE2" ${st(3)}/><path d="M26 -4 L80 -46" ${st(6)}/></g>`;
+    return s;
+  } },
+  fry: { dur: 1.2, draw(t, F) {
+    let s = burner(t) + panSide(`<path d="M70 166 L290 166 L294 152 L66 152 Z" fill="#F2C84B" opacity=".8"/>`);
+    for (let i = 0; i < 4; i++) s += `<g ${at(110 + i * 46, 150 + Math.sin(t * 8 + i) * 2, 0.32)}>${whole(F, 0.6)}</g>`;
+    for (let i = 0; i < 10; i++) { const q = (t * 2 + i / 10) % 1; s += `<circle cx="${90 + (i * 41) % 180}" cy="${150 - q * 30}" r="2.5" fill="#fff" ${st(1.6)} opacity="${1 - q}"/>`; }
+    return s;
+  } },
+  roast: { dur: 3, draw(t, F) {
+    let s = `<rect x="40" y="150" width="280" height="22" rx="6" fill="#9AA4AC" ${st()}/>`;
+    for (let i = 0; i < 7; i++) s += piece(F, "chunk", 70 + i * 36, 146 + (i % 2) * 4, i * 50, 1.4);
+    // heat waves
+    for (let i = 0; i < 3; i++) { const q = (t * 0.5 + i / 3) % 1; s += `<path d="M${120 + i * 60} ${120 - q * 50} c-8 -8 8 -12 0 -20" fill="none" stroke="#F0643C" stroke-width="4" stroke-linecap="round" opacity="${1 - q}"/>`; }
+    return s;
+  } },
+};
+
+/// Builds a demo for "action:food", e.g. "dice:chicken" or "pour:milk".
+// ---------- General scenes: work for any food, or none ----------
+// A bite-sized piece of whatever's cooking; unknown food shows a colorful mix.
+const MIX = ["#F08A3C", "#8CC152", "#E8503C", "#F7C94B", "#D99A5B"];
+function morsel(F, i, x, y, r, cooked = 0.7) {
+  if (!F || F === FOODS.food) return `<path transform="translate(${x} ${y}) rotate(${r})" d="M-11 -7 L8 -10 L12 4 L2 10 L-10 6 Z" fill="${MIX[i % MIX.length]}" ${st(2.4)}/>`;
+  if (F.type === "slab") return bit(F, "cube", x, y, r, cooked);
+  return piece(F, "chunk", x, y, r);
+}
+const plate = (x, y, s = 1) => `<g ${at(x, y, s)}><ellipse rx="62" ry="15" fill="#fff" ${st()}/><ellipse rx="40" ry="8" fill="none" stroke="#E4E0D6" stroke-width="3"/></g>`;
+const spatula = (x, y, r = -24) => `<g ${at(x, y, 1, r)}><path d="M-24 0 L24 0 L26 -7 L-22 -7 Z" fill="#D9DEE2" ${st(3)}/><path d="M24 -4 L76 -44" ${st(6)}/></g>`;
+const PAN_SPOTS = [[100, 158], [130, 154], [160, 160], [190, 155], [220, 159], [250, 156], [116, 167], [146, 168], [176, 168], [206, 167], [236, 168]];
+
+Object.assign(ACTIONS, {
+  // Food cooking in a skillet, stirred now and then: the everyday stove scene.
+  panfood: { dur: 2.4, draw(t, F) {
+    let s = burner(t) + panSide();
+    const stir = Math.sin(t / 2.4 * Math.PI * 2);
+    PAN_SPOTS.forEach(([x, y], i) => { s += morsel(F, i, x + stir * ((i % 3) - 1) * 4, y - Math.abs(Math.sin(t * 7 + i)) * 2, i * 47 + stir * 10); });
+    s += sizzle(t, 180, 150, 190) + steam(t, [140, 210, 250], 112, 0.5);
+    return s + spatula(200 + stir * 50, 140, -20 + stir * 8);
+  } },
+  // "Return the chicken to the skillet": a plate tips and the food slides in.
+  intopan: { dur: 2.6, draw(t, F) {
+    let s = burner(t) + panSide();
+    const p = t / 2.6, tip = ease(clamp(p / 0.35)), slide = clamp((p - 0.3) / 0.45);
+    PAN_SPOTS.slice(0, 5).forEach(([x, y], i) => { s += morsel(FOODS.food === F ? F : FOODS.food, i + 2, x + 120, y, i * 30); });
+    s += `<g transform="translate(130 ${lerp(70, 64, tip)}) rotate(${lerp(0, 32, tip)})">${plate(0, 0, 0.8)}</g>`;
+    PAN_SPOTS.slice(5).forEach(([x, y], i) => {
+      const q = clamp(slide * 1.4 - i * 0.08), bx = lerp(100 + i * 14, x - 20, q), by = lerp(56, y, q * q);
+      s += morsel(F, i, bx, by, i * 50 + q * 120);
+    });
+    return s + (p > 0.75 ? sizzle(t, 180, 150, 190) : "");
+  } },
+  // "Transfer to a plate": the spatula lifts food out of the pan onto a plate.
+  toplate: { dur: 2.6, draw(t, F) {
+    let s = burner(t) + panSide() + plate(296, 84, 0.7);
+    const p = t / 2.6, lift = clamp(p / 0.7), arc = Math.sin(lift * Math.PI) * 50;
+    const x = lerp(170, 296, ease(lift)), y = lerp(150, 76, ease(lift)) - arc;
+    PAN_SPOTS.slice(0, 6).forEach(([px, py], i) => { s += morsel(F, i, px, py, i * 40, 0.9); });
+    for (let i = 0; i < 3; i++) s += morsel(F, i + 6, x - 12 + i * 12, y - 8 - (i % 2) * 6, i * 60, 0.9);
+    if (p > 0.72) for (let i = 0; i < 3; i++) s += morsel(F, i + 6, 284 + i * 12, 76, i * 60, 0.9);
+    return s + spatula(x + 6, y + 2, -18);
+  } },
+  // "Place in a bowl" / "Add the flour, baking soda, and salt": pieces drop into a bowl.
+  intobowl: { dur: 2, draw(t, F) {
+    let s = bowlSide("#F6EBD3", `<path d="M78 136 C120 128 240 128 282 136" fill="none" stroke="#E4D6B8" stroke-width="6"/>`);
+    for (let i = 0; i < 6; i++) {
+      const q = (t / 2 + i / 6) % 1;
+      s += morsel(F, i, 150 + (i * 23) % 60, lerp(30, 134, ease(q)), i * 60 + q * 200);
+    }
+    return s;
+  } },
+  // "Reduce the heat" / "Turn down to low": the knob turns, the flames shrink.
+  heatdown: { dur: 2.4, draw(t, F) {
+    const p = ease(clamp(t / 1.4)), big = lerp(1, 0.45, p);
+    let s = flames(t, big, 226) + panSide();
+    PAN_SPOTS.slice(0, 8).forEach(([x, y], i) => { s += morsel(F, i, x, y, i * 40); });
+    s += `<g ${at(310, 70)}><circle r="26" fill="#fff" ${st(3.5)}/><path d="M0 0 L0 -18" ${st(5)} transform="rotate(${lerp(60, -60, p)})"/>${[-60, 0, 60].map(a => `<path d="M0 -32 L0 -36" ${st(3)} transform="rotate(${a})"/>`).join("")}</g>`;
+    return s;
+  } },
+  // "Remove from the heat": the pan slides off and the burner goes out.
+  offheat: { dur: 2.6, draw(t, F) {
+    const p = ease(clamp(t / 1.6)), off = clamp((t - 1.4) / 0.6);
+    let s = off < 1 ? `<g opacity="${1 - off}">${flames(t, 1 - off * 0.6, 226)}</g>` : `<path d="M120 226 L240 226" ${st(3)} opacity=".4"/>`;
+    s += `<g transform="translate(${lerp(0, -70, p)} ${lerp(0, -10, p)})">${panSide()}${PAN_SPOTS.slice(0, 8).map(([x, y], i) => morsel(F, i, x, y, i * 40)).join("")}</g>`;
+    return s;
+  } },
+  // "Push the rice to the side": food sweeps over, leaving room in the pan.
+  pushside: { dur: 2.4, draw(t, F) {
+    let s = burner(t) + panSide();
+    const p = ease(clamp(t / 1.6));
+    PAN_SPOTS.forEach(([x, y], i) => { const nx = lerp(x, 90 + (i % 4) * 16, p * (x > 110 ? 1 : 0.4)); s += morsel(F, i, nx, y - (i % 2) * 4 * p, i * 37); });
+    if (p > 0.8) s += `<path d="M190 148 C210 140 250 140 270 148" fill="none" stroke="#fff" stroke-width="3" stroke-dasharray="4 6" opacity=".7"/>`;
+    return s + spatula(lerp(290, 150, p), 144, -10);
+  } },
+  // "Leave untouched for 30 seconds": it sizzles while a stopwatch ticks.
+  leave: { dur: 3, draw(t, F) {
+    let s = burner(t) + panSide();
+    PAN_SPOTS.slice(0, 9).forEach(([x, y], i) => { s += morsel(F, i, x, y, i * 40, clamp(0.4 + t / 6)); });
+    s += sizzle(t, 180, 150, 190);
+    const a = (t / 3) * 360;
+    return s + `<g ${at(300, 66)}><circle r="28" fill="#fff" ${st(3.5)}/><path d="M-6 -36 L6 -36 M0 -36 L0 -30" ${st(4)}/><path d="M0 0 L0 -20" ${st(4)} transform="rotate(${a})"/><circle r="3" fill="${INK}"/></g>`;
+  } },
+  // "Heat a large skillet": an empty pan with heat shimmer.
+  heatpan: { dur: 2.4, draw(t) {
+    let s = burner(t) + panSide();
+    for (let i = 0; i < 4; i++) { const q = (t / 2.4 + i / 4) % 1; s += `<path d="M${120 + i * 40} ${140 - q * 40} c-6 -6 6 -10 0 -16" fill="none" stroke="#E8613C" stroke-width="3" stroke-linecap="round" opacity="${(1 - q) * 0.8}"/>`; }
+    return s;
+  } },
+  // "Warm the milk" in the microwave: the plate turns, the light glows.
+  microwave: { dur: 2.4, draw(t, F) {
+    let s = `<rect x="50" y="60" width="260" height="150" rx="14" fill="#fff" ${st()}/><rect x="70" y="80" width="170" height="110" rx="8" fill="#FFF3C4" ${st(3)}/>`;
+    s += `<rect x="256" y="84" width="38" height="24" rx="4" fill="#DDE7F3" ${st(2.5)}/><circle cx="275" cy="136" r="9" fill="#fff" ${st(2.5)}/><circle cx="275" cy="166" r="9" fill="#fff" ${st(2.5)}/>`;
+    const turn = Math.sin(t / 2.4 * Math.PI * 2) * 12;
+    s += `<ellipse cx="155" cy="176" rx="60" ry="9" fill="#fff" ${st(2.5)}/><g transform="translate(${155 + turn} 150)"><path d="M-22 -18 L22 -18 L18 22 L-18 22 Z" fill="${F.liquid || F.inner || "#fff"}" ${st(3)}/><path d="M22 -8 C34 -8 34 10 20 10" fill="none" ${st(3)}/></g>`;
+    return s + `<text x="275" y="101" text-anchor="middle" font-family="IBM Plex Sans, sans-serif" font-weight="700" font-size="13" fill="${INK}">0:${String(30 - Math.floor(t * 4) % 30).padStart(2, "0")}</text>`;
+  } },
+  // "Brush with egg wash": a pastry brush paints a shiny stripe.
+  brush: { dur: 2, draw(t, F) {
+    let s = `<rect x="70" y="120" width="220" height="70" rx="10" fill="#F0C88A" ${st()}/>`;
+    const p = (t / 2), x = lerp(90, 270, (Math.sin(p * Math.PI * 2 - 1.57) + 1) / 2);
+    s += `<rect x="86" y="136" width="${Math.max(0, x - 86)}" height="38" rx="8" fill="#F7D27A" opacity=".85"/>`;
+    return s + `<g ${at(x, 150, 1, -30)}><rect x="-12" y="-14" width="24" height="22" rx="3" fill="#F7E7A8" ${st(3)}/><rect x="-6" y="-80" width="12" height="68" rx="5" fill="#C98A4B" ${st(3)}/></g>`;
+  } },
+});
+
+function cueDemo(name) {
+  const [actionName, foodName, shape] = name.split(":");
+  const action = ACTIONS[actionName];
+  if (!action) return null;
+  // "still:bowl:flour,sugar": a place and what sits beside it.
+  if (actionName === "still") return { title: name, dur: action.dur, captions: [], draw: (t) => action.draw(t, null, `${foodName || "bowl"}|${shape || ""}`) };
+  if (shape) {
+    const F0 = FOODS[foodName] || FOODS.food;
+    return { title: name, dur: action.dur, captions: [], draw: (t) => action.draw(t, F0, shape) };
+  }
+  let F = FOODS[foodName];
+  if (!F && LIQUIDS[foodName]) F = { ...FOODS.food, type: "round", fill: LIQUIDS[foodName], inner: LIQUIDS[foodName], liquid: LIQUIDS[foodName] };
+  F = F || FOODS.food;
+  return { title: name, dur: action.dur, captions: [], draw: (t) => action.draw(t, F) };
+}
+
+// ---------- More foods: baked dishes and mixes ----------
+Object.assign(FOODS, {
+  cookies:   { type: "cookies",  fill: "#D9A55B", inner: "#F0C88A", chips: "#4A2A1A" },
+  cake:      { type: "cake",     fill: "#F6D9A3", inner: "#F9E6C2", icing: "#F49AC1" },
+  brownies:  { type: "cake",     fill: "#6B3A22", inner: "#8A5230", icing: "#4A2A1A" },
+  muffins:   { type: "muffins",  fill: "#D9A55B", inner: "#F0C88A", chips: "#5B2C6F" },
+  lasagna:   { type: "casserole", fill: "#E8613C", inner: "#F7D27A", top: "#F7C94B" },
+  casserole: { type: "casserole", fill: "#F7C94B", inner: "#FBDB7A", top: "#E8B23C" },
+  pie:       { type: "pie",      fill: "#D9A55B", inner: "#9C2F4A" },
+  pizza:     { type: "pizza",    fill: "#E8B46A", inner: "#E8503C", top: "#F7E7A8" },
+  meatloaf:  { type: "loafpan",  fill: "#8A4B24", inner: "#B5633E", top: "#C8302A" },
+  veggies:   { type: "mixed",    fill: "#8CC152", inner: "#F08A3C" },
+  parsnip:   { type: "long",     fill: "#F1E3B0", inner: "#FBF4DC", top: "greens", taper: true },
+  seeds:     { type: "nut",      fill: "#F1E3B0", inner: "#F7EDC9", tiny: true },
+  sauce:     { type: "round",    fill: "#E8613C", inner: "#E8613C", liquid: "#E8613C", oval: true },
+});
+
+// Extra shapes for the new foods, drawn around 0,0 like the rest.
+const _baseWhole = whole;
+whole = function (F, cooked = 0) {
+  switch (F.type) {
+    case "cookies":
+      return [[-44, 4], [0, -6], [44, 6]].map(([x, y]) => `<g transform="translate(${x} ${y})"><circle r="24" fill="${F.fill}" ${st(3.5)}/>
+        ${[[-8, -6], [6, -10], [8, 6], [-6, 8]].map(([a, b]) => `<circle cx="${a}" cy="${b}" r="3.2" fill="${F.chips}"/>`).join("")}</g>`).join("");
+    case "cake":
+      return `<path d="M-56 -6 L56 -6 L56 30 C56 42 -56 42 -56 30 Z" fill="${F.fill}" ${st()}/><ellipse cx="0" cy="-6" rx="56" ry="14" fill="${F.icing}" ${st()}/>
+        <path d="M-56 12 C-30 20 30 20 56 12" fill="none" stroke="${F.inner}" stroke-width="5"/><path d="M-30 -10 l0 -22 M0 -14 l0 -24 M30 -10 l0 -22" ${st(4)}/>
+        <path d="M-30 -32 l0 -6 M0 -38 l0 -6 M30 -32 l0 -6" stroke="#F0643C" stroke-width="5" stroke-linecap="round"/>`;
+    case "muffins":
+      return `<rect x="-70" y="6" width="140" height="30" rx="8" fill="#9AA4AC" ${st()}/>` + [-44, 0, 44].map(x => `<g transform="translate(${x} 0)">
+        <path d="M-16 8 L16 8 L12 30 L-12 30 Z" fill="#fff" ${st(3)}/><path d="M-20 10 C-24 -18 24 -18 20 10 Z" fill="${F.fill}" ${st(3)}/>
+        <circle cx="-5" cy="-4" r="3" fill="${F.chips}"/><circle cx="6" cy="0" r="3" fill="${F.chips}"/></g>`).join("");
+    case "casserole":
+      return `<rect x="-66" y="-24" width="132" height="58" rx="10" fill="#fff" ${st()}/><rect x="-58" y="-16" width="116" height="42" rx="6" fill="${F.inner}"/>
+        <path d="M-58 0 L58 0 M-58 12 L58 12" stroke="${F.fill}" stroke-width="5"/><path d="M-58 -16 C-30 -24 30 -8 58 -16 L58 -8 L-58 -8 Z" fill="${F.top}"/>
+        ${[[-34, -14], [-4, -18], [26, -12]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="4" fill="#C47A1E" opacity=".6"/>`).join("")}
+        <rect x="-78" y="-10" width="12" height="14" rx="4" fill="#fff" ${st(3)}/><rect x="66" y="-10" width="12" height="14" rx="4" fill="#fff" ${st(3)}/>`;
+    case "pie":
+      return `<ellipse cx="0" cy="8" rx="64" ry="24" fill="#fff" ${st()}/><ellipse cx="0" cy="2" rx="54" ry="18" fill="${F.inner}" ${st(3)}/>
+        <path d="M-40 -6 L30 14 M-20 -12 L44 6 M-46 6 L10 18 M30 -12 L-26 16 M44 -4 L-6 18" stroke="${F.fill}" stroke-width="7" stroke-linecap="round"/>
+        <ellipse cx="0" cy="2" rx="54" ry="18" fill="none" stroke="${F.fill}" stroke-width="6"/>`;
+    case "pizza":
+      return `<circle r="52" fill="${F.fill}" ${st()}/><circle r="42" fill="${F.inner}"/><path d="M-36 -16 C-20 -30 24 -32 38 -10 C40 14 20 34 -10 36 C-34 30 -42 6 -36 -16 Z" fill="${F.top}" opacity=".9"/>
+        ${[[-18, -14], [16, -18], [20, 12], [-16, 16], [0, 0]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="7" fill="#C8302A" ${st(2)}/>`).join("")}
+        <path d="M0 0 L0 -52 M0 0 L46 26 M0 0 L-46 26" stroke="${INK}" stroke-width="1.5" opacity=".5"/>`;
+    case "loafpan":
+      return `<path d="M-60 -16 L60 -16 L52 32 L-52 32 Z" fill="#9AA4AC" ${st()}/><path d="M-52 -14 C-50 -34 50 -34 52 -14 Z" fill="${F.fill}" ${st(3)}/>
+        <path d="M-46 -22 C-20 -30 20 -30 46 -22" fill="none" stroke="${F.top}" stroke-width="8" stroke-linecap="round"/>`;
+    case "mixed":
+      return [["#8CC152", -36, -8], ["#F08A3C", -6, -16], ["#E8503C", 24, -6], ["#F7C94B", -20, 12], ["#4E9A3A", 12, 14], ["#F08A3C", 40, 12]]
+        .map(([c, x, y]) => `<path transform="translate(${x} ${y})" d="M-12 -8 L8 -11 L13 4 L2 11 L-11 7 Z" fill="${c}" ${st(3)}/>`).join("");
+  }
+  if (F.tiny) return [...Array(14)].map((_, i) => `<ellipse cx="${-40 + (i * 23) % 80}" cy="${-14 + (i * 17) % 28}" rx="5" ry="3" fill="${F.fill}" ${st(1.6)} transform="rotate(${i * 40} ${-40 + (i * 23) % 80} ${-14 + (i * 17) % 28})"/>`).join("");
+  return _baseWhole(F, cooked);
+};
+// Mixed veggies cut into many colors; seeds stay tiny.
+const _basePiece = piece;
+piece = function (F, kind, x, y, rot = 0, size = 1) {
+  if (F.type === "mixed") {
+    const colors = ["#8CC152", "#F08A3C", "#E8503C", "#F7C94B", "#4E9A3A"];
+    const c = colors[Math.abs(Math.round(x + y)) % colors.length];
+    return _basePiece({ ...F, type: "round", inner: c, fill: c }, kind, x, y, rot, size);
+  }
+  if (F.tiny) return `<ellipse transform="translate(${x} ${y}) rotate(${rot})" rx="5" ry="3" fill="${F.fill}" ${st(1.6)}/>`;
+  return _basePiece(F, kind, x, y, rot, size);
+};
+
+// ---------- More actions: baking prep, assembly, finishing ----------
+const sheetPan = (y = 170) => `<rect x="40" y="${y}" width="280" height="20" rx="6" fill="#9AA4AC" ${st()}/>`;
+const dish = (inner = "") => `<rect x="70" y="120" width="220" height="90" rx="14" fill="${ACCENT.pot || "#fff"}" ${st()}/>${inner}
+  <rect x="52" y="146" width="20" height="22" rx="6" fill="#fff" ${st(3)}/><rect x="288" y="146" width="20" height="22" rx="6" fill="#fff" ${st(3)}/>`;
+
+Object.assign(ACTIONS, {
+  preheat: { dur: 3, draw(t) {
+    let s = `<rect x="70" y="40" width="220" height="190" rx="16" fill="#fff" ${st()}/><rect x="70" y="40" width="220" height="40" rx="16" fill="#E0DCD1" ${st()}/>`;
+    const turn = ease(clamp(t / 1.2));
+    s += `<g transform="translate(250 60) rotate(${turn * 220})"><circle r="13" fill="#fff" ${st(3)}/><path d="M0 0 L0 -10" ${st(3.5)}/></g><circle cx="110" cy="60" r="11" fill="#fff" ${st(3)}/>`;
+    const glow = clamp((t - 1) / 1.6);
+    s += `<rect x="96" y="98" width="168" height="104" rx="12" fill="${mixColor("#E4E0D6", "#F7C94B", glow)}" ${st()}/>`;
+    for (let i = 0; i < 3; i++) { const q = (t * 0.6 + i / 3) % 1; s += `<path d="M${140 + i * 40} ${190 - q * 70} c-6 -8 6 -12 0 -20" fill="none" stroke="#F0643C" stroke-width="4" stroke-linecap="round" opacity="${glow * (1 - q)}"/>`; }
+    return s + `<path d="M110 214 L250 214" ${st(5)}/>`;
+  } },
+  grease: { dur: 1.6, draw(t, F) {
+    let s = `<path d="M70 110 L290 110 L276 210 L84 210 Z" fill="#9AA4AC" ${st()}/><path d="M84 118 L276 118 L266 202 L94 202 Z" fill="#B9C0C6"/>`;
+    const p = t / 1.6, x = lerp(110, 250, (Math.sin(p * Math.PI * 2 - 1.57) + 1) / 2);
+    s += `<path d="M96 ${150 - 10} Q180 ${170} ${x} 150" fill="none" stroke="#FFE08A" stroke-width="16" stroke-linecap="round" opacity=".75"/>`;
+    return s + `<g transform="translate(${x} 130) rotate(-10)"><rect x="-20" y="-14" width="40" height="26" rx="5" fill="#FFE08A" ${st(3)}/><g transform="translate(0 -22)">${fist()}</g></g>`;
+  } },
+  scoop: { dur: 2.4, draw(t, F) {
+    let s = sheetPan(180);
+    const n = Math.floor(t / 0.4);
+    for (let i = 0; i < Math.min(n, 6); i++) s += `<circle cx="${80 + i * 40}" cy="168" r="15" fill="${F.fill}" ${st(3)}/><circle cx="${76 + i * 40}" cy="164" r="2.6" fill="${F.chips || shade(F.fill)}"/>`;
+    const p = (t % 0.4) / 0.4, x = 80 + Math.min(n, 5) * 40;
+    s += `<g transform="translate(${x} ${lerp(80, 140, Math.sin(p * Math.PI))})"><path d="M-16 0 C-16 18 16 18 16 0 Z" fill="#D9DEE2" ${st(3)}/><circle cx="0" cy="4" r="11" fill="${F.fill}"/><path d="M0 0 L0 -50" ${st(6)}/><g transform="translate(0 -46)">${fist()}</g></g>`;
+    return s;
+  } },
+  press: { dur: 1.6, draw(t, F) {
+    const push = Math.abs(Math.sin(t / 1.6 * Math.PI));
+    let s = `<path d="M70 120 L290 120 L278 210 L82 210 Z" fill="#9AA4AC" ${st()}/>`;
+    s += `<path d="M82 ${lerp(150, 170, push)} C120 ${lerp(130, 168, push)} 240 ${lerp(140, 168, push)} 278 ${lerp(150, 170, push)} L278 206 L82 206 Z" fill="${F.fill}" ${st(3)}/>`;
+    return s + `<g transform="translate(180 ${lerp(90, 140, push)})"><g transform="scale(1.6)">${fist()}</g></g>`;
+  } },
+  layer: { dur: 3.2, draw(t) {
+    const colors = ["#E8613C", "#F2D27A", "#FFF6E3", "#E8613C", "#F2D27A", "#F7C94B"];
+    let s = `<path d="M60 90 L300 90 L300 210 C300 220 60 220 60 210 Z" fill="#fff" ${st()}/>`;
+    const n = Math.floor(t / 0.5);
+    for (let i = 0; i < Math.min(n + 1, 6); i++) {
+      const drop = i === n ? ease(clamp((t % 0.5) / 0.4)) : 1;
+      const y = 196 - i * 16;
+      s += `<rect x="70" y="${lerp(40, y, drop)}" width="220" height="14" rx="4" fill="${colors[i]}" ${st(2.4)} opacity="${drop}"/>`;
+    }
+    return s;
+  } },
+  cover: { dur: 2.4, draw(t, F) {
+    let s = `<g transform="translate(180 168) scale(1.3)">${whole(F)}</g>`;
+    const p = ease(clamp(t / 1.4));
+    s += `<path d="M${lerp(-20, 80, p)} ${lerp(40, 118, p)} L${lerp(360, 280, p)} ${lerp(30, 118, p)} L${lerp(340, 284, p)} ${lerp(80, 150, p)} L${lerp(0, 76, p)} ${lerp(90, 150, p)} Z" fill="#D9DEE2" ${st(3)} opacity=".95"/>`;
+    for (let i = 0; i < 4; i++) s += `<path d="M${lerp(20, 100, p) + i * 50} ${lerp(56, 126, p)} l20 12" stroke="#fff" stroke-width="3" stroke-linecap="round" opacity=".8"/>`;
+    return s;
+  } },
+  cool: { dur: 2.4, draw(t, F) {
+    let s = `<path d="M50 190 L310 190 M50 190 L46 214 M310 190 L314 214" ${st(4)}/>`;
+    for (let x = 60; x <= 300; x += 20) s += `<path d="M${x} 186 L${x} 194" ${st(2.4)}/>`;
+    s += `<path d="M50 186 L310 186" ${st(3)}/><g transform="translate(180 152) scale(1)">${whole(F, 1)}</g>`;
+    for (let i = 0; i < 3; i++) { const q = (t * 0.4 + i / 3) % 1; s += `<path d="M${140 + i * 40} ${110 - q * 50} c-6 -8 6 -12 0 -20" fill="none" ${st(3)} opacity="${(1 - q) * 0.6}"/>`; }
+    return s + `<path d="M300 52 L300 92 M286 66 L314 78 M286 78 L314 66" stroke="#7FB4F0" stroke-width="4" stroke-linecap="round"/>`;
+  } },
+  garnish: { dur: 2, draw(t, F) {
+    let s = `<ellipse cx="180" cy="190" rx="130" ry="30" fill="#fff" ${st()}/><path d="M110 186 C116 140 244 140 250 186 Z" fill="#F6D9A3" ${st(3.5)}/>`;
+    for (let i = 0; i < 10; i++) { const q = (t / 2 + i / 10) % 1; s += piece(F.type === "leafy" ? F : FOODS.herbs, "bit", 130 + (i * 37) % 100 + Math.sin(q * 6 + i) * 6, 70 + q * 90, i * 50, 1.3); }
+    for (let i = 0; i < 8; i++) s += piece(F.type === "leafy" ? F : FOODS.herbs, "bit", 140 + (i * 13) % 80, 160 + (i % 3) * 6, i * 40, 1.6);
+    return s + `<g transform="translate(${180 + Math.sin(t * 8) * 6} 50) rotate(180)">${fist()}</g>`;
+  } },
+  ladle: { dur: 2, draw(t, F) {
+    let s = [100, 260].map(x => `<path d="M${x - 60} 170 C${x - 56} 222 ${x + 56} 222 ${x + 60} 170 Z" fill="#fff" ${st()}/><path d="M${x - 52} 176 C${x - 40} 182 ${x + 40} 182 ${x + 52} 176" fill="${F.liquid || F.inner}" ${st(2)}/>`).join("");
+    const p = (t / 2), x = lerp(100, 260, (Math.sin(p * Math.PI * 2 - 1.57) + 1) / 2);
+    return s + `<g transform="translate(${x} 130) rotate(${Math.sin(p * Math.PI * 4) * 25})"><path d="M-20 0 C-20 24 20 24 20 0 Z" fill="#9AA4AC" ${st(3)}/><path d="M-16 4 L16 4" stroke="${F.liquid || F.inner}" stroke-width="6"/><path d="M18 -2 C40 -40 40 -70 30 -90" fill="none" ${st(6)}/></g>`;
+  } },
+  thicken: { dur: 2, draw(t, F) {
+    let s = flames(t, 0.7, 226) + `<path d="M80 130 L280 130 L270 204 L90 204 Z" fill="#E4E0D6" ${st()}/><path d="M280 140 L340 122" ${st(9)}/>`;
+    const k = (t / 2);
+    s += `<path d="M86 ${150 - k * 6} L274 ${150 - k * 6} L268 202 L92 202 Z" fill="${F.liquid || "#F6D9A3"}" ${st(2.5)}/>`;
+    for (let i = 0; i < 4; i++) { const q = (t * 0.5 + i / 4) % 1; s += `<circle cx="${110 + i * 46}" cy="${196 - q * 40}" r="${3 + q * 2}" fill="#fff" ${st(1.6)} opacity="${1 - q}"/>`; }
+    const sway = Math.sin(t / 2 * Math.PI * 4);
+    return s + `<g transform="translate(${180 + sway * 50} 70) rotate(${sway * 14})"><path d="M0 50 C-14 74 -10 96 0 98 C10 96 14 74 0 50" fill="none" ${st(3.5)}/><path d="M0 50 L0 18" ${st(7)}/><g transform="translate(0 10)">${fist()}</g></g>`;
+  } },
+  toast: { dur: 1.6, draw(t, F) {
+    let s = burner(t, 0.7) + panSide();
+    for (let i = 0; i < 12; i++) { const ph = (t / 1.6 + i / 12) % 1, h = Math.max(0, Math.sin(ph * Math.PI * 2)) * 14; s += piece(F, "bit", 100 + (i * 17) % 160, 150 - h, ph * 360, 1.8); }
+    return s + `<path d="M120 120 q4 -8 8 0 M200 116 q4 -8 8 0" ${st(2.4)}/>`;
+  } },
+});
+
+// A splash of oil into a pan: thin stream, small pool that spreads.
+ACTIONS.drizzle = { dur: 2.4, draw(t, F) {
+  let s = burner(t, 0.5) + panSide();
+  const p = t / 2.4, pour = p < 0.6 ? 1 : 0, spread = ease(clamp(p / 0.8));
+  s += `<ellipse cx="180" cy="181" rx="${lerp(8, 70, spread)}" ry="${lerp(2, 4, spread)}" fill="${F.liquid || "#F2C84B"}" stroke="#C99A1E" stroke-width="2"/>`;
+  // The spout points down at the pan while pouring, then the bottle tips back up.
+  if (pour) s += `<path d="M192 112 C188 140 184 160 182 178" fill="none" stroke="${F.liquid || "#F2C84B"}" stroke-width="4" stroke-linecap="round"/>`;
+  const tilt = pour ? -140 : lerp(-140, -20, ease(clamp((p - 0.6) / 0.3)));
+  s += `<g transform="translate(228 62) rotate(${tilt})"><path d="M-14 -40 L14 -40 L16 30 C16 38 -16 38 -16 30 Z" fill="#F7E7A8" ${st(3)}/>
+    <rect x="-6" y="-56" width="12" height="16" rx="3" fill="#3E8E41" ${st(2.6)}/><path d="M${pour ? "-14 -38 L14 -38 L14 -8 L-14 -8" : "-14 -4 L14 -4 L15 26 L-15 26"} Z" fill="${F.liquid || "#F2C84B"}"/>
+    <path d="M-10 0 L10 0" stroke="#3E8E41" stroke-width="5"/></g>`;
+  return s;
+} };
+
+// Heating a little oil: a thin film that starts to shimmer. No words, no test.
+ACTIONS.heat = { dur: 2.4, draw(t, F) {
+  let s = burner(t, 0.8) + panSide();
+  const warm = clamp(t / 1.6);
+  let surf = "M84 180";
+  for (let i = 0; i <= 19; i++) surf += ` L${84 + i * 10} ${180 + Math.sin(t * 8 + i * 1.1) * 1.2 * warm}`;
+  s += `<path d="${surf} L276 185 C230 188 130 188 84 185 Z" fill="${F.liquid || "#F2C84B"}"/><path d="${surf}" fill="none" stroke="#C99A1E" stroke-width="2" stroke-linecap="round"/>`;
+  for (let i = 0; i < 5; i++) s += `<path d="M${100 + i * 36 + Math.sin(t * 3 + i) * 6} 181 q7 -2 14 0" stroke="#fff" stroke-width="2.4" fill="none" stroke-linecap="round" opacity="${warm * (0.4 + 0.5 * Math.sin(t * 6 + i))}"/>`;
+  for (let i = 0; i < 3; i++) { const q = (t * 0.6 + i / 3) % 1; s += `<path d="M${130 + i * 50} ${168 - q * 40} c-5 -6 5 -10 0 -16" fill="none" stroke="#F0643C" stroke-width="3" stroke-linecap="round" opacity="${warm * (1 - q) * 0.7}"/>`; }
+  return s;
+} };
+
+// ---------- Pantry: the dry goods baking steps name ----------
+// Bags, tins, shakers, and bottles; spilled or dropped, they're grains.
+Object.assign(FOODS, {
+  flour:      { type: "pantry", shape: "bag",    fill: "#FBF8EE", inner: "#FFFFFF", mark: "#E8C49A" },
+  sugar:      { type: "pantry", shape: "bag",    fill: "#EAF3FB", inner: "#FFFFFF", mark: "#7FB4F0" },
+  brownsugar: { type: "pantry", shape: "bag",    fill: "#E8C49A", inner: "#B5813A", mark: "#8A5A2B" },
+  cocoa:      { type: "pantry", shape: "tin",    fill: "#6B3A22", inner: "#5A3220", mark: "#F7C94B" },
+  salt:       { type: "pantry", shape: "shaker", fill: "#FFFFFF", inner: "#FFFFFF", mark: "#7FB4F0" },
+  leavening:  { type: "pantry", shape: "tin",    fill: "#F59E3A", inner: "#FFFFFF", mark: "#FFFFFF" },
+  vanilla:    { type: "pantry", shape: "bottle", fill: "#5A3220", inner: "#8A5230", mark: "#F7E7A8" },
+  chips:      { type: "pantry", shape: "chips",  fill: "#4A2A1A", inner: "#4A2A1A", mark: "#4A2A1A" },
+  oats:       { type: "pantry", shape: "bag",    fill: "#F1E3B0", inner: "#E8D08A", mark: "#B5813A" },
+});
+function pantryItem(F) {
+  switch (F.shape) {
+    case "bag":
+      return `<path d="M-34 -44 L34 -44 L40 40 C40 48 -40 48 -40 40 Z" fill="${F.fill}" ${st()}/><path d="M-34 -44 L-26 -56 L26 -56 L34 -44" fill="${F.fill}" ${st(3.5)}/>
+        <path d="M-18 -16 C-6 -26 6 -26 18 -16 M-14 0 C-4 -8 4 -8 14 0" fill="none" stroke="${F.mark}" stroke-width="5" stroke-linecap="round"/>
+        <ellipse cx="0" cy="22" rx="18" ry="8" fill="${F.mark}" opacity=".55"/>`;
+    case "tin":
+      return `<rect x="-30" y="-40" width="60" height="80" rx="8" fill="${F.fill}" ${st()}/><ellipse cx="0" cy="-40" rx="30" ry="8" fill="${shade(F.fill)}" ${st(3.5)}/>
+        <rect x="-22" y="-14" width="44" height="26" rx="5" fill="${F.mark}" ${st(2.5)}/>`;
+    case "shaker":
+      return `<path d="M-22 -30 L22 -30 L26 40 L-26 40 Z" fill="${F.fill}" ${st()}/><path d="M-22 -30 C-22 -50 22 -50 22 -30" fill="#D9DEE2" ${st(3.5)}/>
+        <circle cx="-7" cy="-40" r="2.5" fill="${INK}"/><circle cx="7" cy="-40" r="2.5" fill="${INK}"/><circle cx="0" cy="-34" r="2.5" fill="${INK}"/>
+        <path d="M-24 6 L24 6" stroke="${F.mark}" stroke-width="7"/>`;
+    case "bottle":
+      return `<path d="M-18 -12 L18 -12 L20 40 L-20 40 Z" fill="${F.fill}" ${st()}/><rect x="-7" y="-40" width="14" height="28" fill="${F.fill}" ${st(3.5)}/>
+        <rect x="-9" y="-50" width="18" height="12" rx="3" fill="#3E8E41" ${st(3)}/><rect x="-14" y="6" width="28" height="18" rx="3" fill="${F.mark}" ${st(2.5)}/>`;
+    case "chips":
+      return `<path d="M-46 0 C-42 42 42 42 46 0 Z" fill="#E4E0D6" ${st()}/><path d="M-50 0 L50 0" ${st(4)}/>` +
+        [[-24, -6], [-4, -12], [16, -6], [32, -10], [-14, -18], [6, -20]].map(([x, y]) => `<path transform="translate(${x} ${y})" d="M-7 6 L0 -8 L7 6 Z" fill="${F.fill}" ${st(2)}/>`).join("");
+  }
+  return "";
+}
+const _wholeBeforePantry = whole;
+whole = function (F, cooked = 0) { return F.type === "pantry" ? pantryItem(F) : _wholeBeforePantry(F, cooked); };
+const _pieceBeforePantry = piece;
+piece = function (F, kind, x, y, rot = 0, size = 1) {
+  if (F.type !== "pantry") return _pieceBeforePantry(F, kind, x, y, rot, size);
+  // Dropped into a bowl, a pantry item is a little pile of grains.
+  if (F.shape === "chips") return `<path transform="translate(${x} ${y}) rotate(${rot})" d="M-7 6 L0 -8 L7 6 Z" fill="${F.fill}" ${st(2)}/>`;
+  return `<g transform="translate(${x} ${y})">${[[-6, 0], [5, -2], [0, 5], [-2, -6], [7, 5]].map(([a, b]) => `<circle cx="${a}" cy="${b}" r="3.4" fill="${F.inner}" ${st(1.4)}/>`).join("")}</g>`;
+};
+
+// ---------- Still scenes: the step's container and what it uses ----------
+// When no picture shows exactly what a step does, show where it happens and
+// what goes in, sitting still on the counter. It can't show the wrong
+// action, because it shows none (Bryce, Oct 21). "still:bowl:flour,sugar"
+const STILL_SPOTS = [[48, 180, 0.52], [314, 180, 0.52], [96, 196, 0.36]];
+function stillItem(key, x, y, k, t, i) {
+  const bob = Math.sin(t * 2 + i * 1.7) * 1.5;
+  let F = FOODS[key];
+  if (!F && LIQUIDS[key]) F = { type: "pantry", shape: "bottle", fill: LIQUIDS[key], inner: LIQUIDS[key], mark: "#FFFFFF" };
+  if (!F || F === FOODS.food) return "";
+  return `<g transform="translate(${x} ${y + bob}) scale(${k})">${whole(F)}</g>`;
+}
+function stillPlace(place, t) {
+  const shrink = (inner, cy = 150, k = 0.5) => `<g transform="translate(180 ${cy}) scale(${k}) translate(-180 -${cy})">${inner}</g>`;
+  switch (place) {
+    case "bowl": return shrink(bowlSide("#F6EBD3", `<path d="M78 136 C120 128 240 128 282 136" fill="none" stroke="#E4D6B8" stroke-width="6"/>`)
+      + `<path d="M200 130 L226 76" ${st(5)}/><path d="M222 84 C214 66 242 62 236 80 C233 88 226 89 222 84 Z" fill="#fff" ${st(2.6)}/>`);
+    case "board": return shrink(board() + knife(250, 120, 90, 90), 160, 0.5);
+    case "pot": return shrink(flames(t, 0.45, 226) + pot(), 160);
+    case "pan": return shrink(flames(t, 0.45, 226) + panSide(), 160);
+    case "dish": return shrink(dish(), 165);
+    case "sheet": return shrink(sheetPan(176), 176);
+    case "oven": return shrink(`<rect x="70" y="40" width="220" height="190" rx="16" fill="#fff" ${st()}/><rect x="70" y="40" width="220" height="40" rx="16" fill="#E0DCD1" ${st()}/>
+      <circle cx="110" cy="60" r="11" fill="#fff" ${st(3)}/><circle cx="250" cy="60" r="11" fill="#fff" ${st(3)}/><rect x="96" y="98" width="168" height="104" rx="12" fill="#F7C94B" opacity=".55" ${st()}/><path d="M110 214 L250 214" ${st(5)}/>`, 135);
+    case "plate": return plate(180, 176, 1.5);
+    case "blender": return shrink(`<path d="M120 40 L240 40 L222 170 L138 170 Z" fill="#EAF3FB" ${st()}/><rect x="120" y="170" width="120" height="50" rx="10" fill="#9AA4AC" ${st()}/><circle cx="180" cy="195" r="9" fill="#fff" ${st(3)}/>`, 130);
+  }
+  return shrink(bowlSide("#F6EBD3"));
+}
+ACTIONS.still = { dur: 3, draw(t, F, extra) {
+  const [place, list] = (extra || "bowl|").split("|");
+  let s = `<path d="M10 216 L350 216" ${st(3)} opacity=".35"/>` + stillPlace(place, t);
+  (list ? list.split(",") : []).slice(0, 3).forEach((key, i) => { const [x, y, k] = STILL_SPOTS[i]; s += stillItem(key, x, y, k, t, i); });
+  return s;
+} };
+
+</script>
+<!-- The animation library (Design/animations/library): 400+ more scenes,
+     split by category. Only the file a step needs is loaded. -->
+<script src="lib-index.js"></script>
+<script>
+(function () {
+  const scene = (new URLSearchParams(location.search).get("a") || "").split("@")[0].split(":")[0];
+  if (typeof ACTIONS !== "undefined" && ACTIONS[scene]) return;
+  const cat = typeof LIB_INDEX !== "undefined" && LIB_INDEX[scene];
+  if (cat) document.write('<script src="lib-core.js"><\/script><script src="lib-' + cat + '.js"><\/script>');
+})();
+</script>
+<script>
+(function () {
+// ---------- runner: one animation per page, picked by ?a=name ----------
+// A library scene plays like any cue: no captions, one loop.
+function libDemo(name) {
+  if (typeof LIB === "undefined") return null;
+  const e = LIB.get(name);
+  if (!e) return null;
+  return { title: name, dur: e.scene.dur, captions: [], draw: (t) => e.scene.draw(t, foodFor(e.key), e.key) };
+}
+const registry = { onion, garlic, simmer: bubbles, flip, fold, well, translucent: stages, oil, crowd, dry, pastaWater, season, rest, gang, reading, celebrate, chop, stir, bake, mix, serve, chef };
+const params = new URLSearchParams(location.search);
+const [aName, accentHex] = (params.get("a") || "").split("@");
+if (accentHex && /^[0-9a-fA-F]{6}$/.test(accentHex)) {
+  const hex = "#" + accentHex;
+  // Pots and dishes wear the color; bowls a light tint; pans a dark shade.
+  ACCENT = { pot: hex, dish: hex, bowl: mixColor(hex, "#ffffff", 0.45), pan: mixColor(hex, "#151515", 0.55) };
+  if (typeof STOVE_POT !== "undefined") { STOVE_POT.wall = hex; STOVE_SAUCE.wall = hex; STOVE_PAN.wall = ACCENT.pan; STOVE_WOK.wall = ACCENT.pan; }
+}
+const demo = registry[aName] || cueDemo(aName || "") || libDemo(aName || "") || gang;
+const showCaption = params.get("caption") !== "0" && demo.captions.length > 0;
+stage.innerHTML = `<svg viewBox="0 0 360 ${demo.height || 250}"><g filter="url(#wobble)" id="g"></g></svg>`;
+if (!showCaption) cap.style.display = "none";
+const g = document.getElementById("g");
+const t0 = performance.now();
+let lastCap = "";
+// Thumbnails: draw one representative frame and stop (no battery cost).
+// ?t=1.5 draws that exact moment (for checking frames in a browser).
+const still = params.get("still") === "1" || params.has("t");
+if (still) {
+  g.innerHTML = demo.draw(params.has("t") ? Number(params.get("t")) : demo.dur * 0.55);
+} else {
+  requestAnimationFrame(frame);
+}
+// Tempo pauses pictures it loads ahead of time, and resumes them on screen.
+let paused = false;
+window.tempoPause = () => { paused = true; };
+window.tempoResume = () => { if (paused) { paused = false; requestAnimationFrame(frame); } };
+// 30 frames a second is plenty for a hand-drawn loop, and saves battery
+// on a long cook (the screen stays awake): skip the in-between frames.
+let lastDrawn = -1000;
+function frame(now) {
+  if (paused) return;
+  if (now - lastDrawn < 32) { requestAnimationFrame(frame); return; }
+  lastDrawn = now;
+  const t = (Math.max(0, now - t0) / 1000) % demo.dur;
+  g.innerHTML = demo.draw(t);
+  if (showCaption) {
+    const c = [...demo.captions].reverse().find(c => t >= c[0]) || demo.captions[0];
+    const html = (c[1] ? `<span class="dot">${c[1]}</span>` : "") + `<span>${c[2]}</span>`;
+    if (html !== lastCap) { cap.innerHTML = html; lastCap = html; }
+  }
+  requestAnimationFrame(frame);
+}
+let seed = 1;
+if (!still) setInterval(() => { if (paused) return; seed = (seed % 4) + 1; turb.setAttribute("seed", seed); }, 140);
+})();
+</script></body></html>

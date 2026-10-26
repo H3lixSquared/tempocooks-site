@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Get Tempo</title>
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<script>
+  // Every "Download" button on the site points here.
+  // When Tempo is live, paste the App Store link between the quotes and
+  // everyone gets sent straight to it.
+  var APP_STORE_URL = "";
+  if (APP_STORE_URL) location.replace(APP_STORE_URL);
+</script>
+<style>
+  @font-face { font-family:"Bricolage Grotesque"; font-weight:800; src:url("/fonts/BricolageGrotesque-ExtraBold.ttf"); }
+  @font-face { font-family:"IBM Plex Sans"; font-weight:600; src:url("/fonts/IBMPlexSans-SemiBold.ttf"); }
+  * { box-sizing:border-box; margin:0; }
+  body { min-height:100vh; display:grid; place-items:center; padding:24px 16px; background:#EEEBE2; color:#151515; font-family:"IBM Plex Sans",system-ui,sans-serif; font-weight:600;
+         background-image:radial-gradient(#D6D2C6 1.3px, transparent 1.4px); background-size:20px 20px; text-align:center; }
+  .card { background:#fff; border:2.5px solid #151515; border-radius:20px; box-shadow:6px 6px 0 #151515; padding:32px 24px; max-width:420px; width:100%; }
+  img { width:120px; height:120px; border-radius:28px; border:2.5px solid #151515; box-shadow:4px 4px 0 #151515; animation:hop 2.4s ease-in-out infinite; }
+  @keyframes hop { 0%,60%,100% { transform:translateY(0); } 70% { transform:translateY(-14px) rotate(-4deg); } 80% { transform:translateY(0); } }
+  h1 { font-family:"Bricolage Grotesque"; font-weight:800; font-size:38px; line-height:1.05; margin:22px 0 10px; letter-spacing:-.02em; }
+  p { color:#55524B; font-size:18px; }
+  a { display:inline-block; margin-top:24px; font-family:"Bricolage Grotesque"; font-weight:800; font-size:18px; color:#151515; text-decoration:none;
+      background:#F7C94B; border:2.5px solid #151515; border-radius:999px; padding:10px 20px; box-shadow:3px 3px 0 #151515; }
+  a:active { transform:translate(3px,3px); box-shadow:none; }
+</style></head>
+<body>
+  <div class="card">
+    <img src="/icon.svg" alt="Tempo app icon">
+    <h1>Almost ready to cook!</h1>
+    <p>Tempo is coming to the App Store very soon.</p>
+    <a href="/">Back to Tempo</a>
+  </div>
+</body></html>

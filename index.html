@@ -57,7 +57,7 @@
   nav { position:sticky; top:0; z-index:20; background:rgba(238,235,226,.92); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px); border-bottom:var(--line) solid var(--ink); }
   nav .wrap { display:flex; align-items:center; justify-content:space-between; height:68px; }
   .logo { display:flex; align-items:center; gap:10px; text-decoration:none; }
-  .note { font-family:"Permanent Marker"; font-size:24px; background:var(--yellow); border:var(--line) solid var(--ink); padding:2px 12px 0; transform:rotate(-3deg);
+  .note { margin-top:8px; font-family:"Permanent Marker"; font-size:24px; background:var(--yellow); border:var(--line) solid var(--ink); padding:2px 12px 0; transform:rotate(-3deg);
           box-shadow:3px 3px 0 var(--ink); position:relative; }
   .note::before { content:""; position:absolute; top:-9px; left:50%; width:34px; height:13px; margin-left:-17px; background:rgba(255,255,255,.7); border:1.5px solid rgba(0,0,0,.25); transform:rotate(4deg); }
   nav .links { display:flex; gap:22px; align-items:center; font-weight:600; }
@@ -141,8 +141,8 @@
   @keyframes blogScroll { 0%,8% { transform:translateY(0); } 92%,100% { transform:translateY(-55%); } }
   .blog .popup { position:absolute; left:14%; right:14%; top:36%; background:#fff; border:2px solid #999; border-radius:10px; padding:14px; text-align:center; font-size:14px; font-weight:700; box-shadow:0 8px 30px rgba(0,0,0,.2); animation:popup 7s infinite; }
   @keyframes popup { 0%,40% { opacity:0; transform:scale(.8); } 45%,80% { opacity:1; transform:scale(1); } 85%,100% { opacity:0; } }
-  .blog .scribble { position:absolute; inset:0; pointer-events:none; }
-  .blog .scribble path { stroke-dasharray:1600; stroke-dashoffset:1600; }
+  .blog .scribble { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+  .blog .scribble path { stroke-dasharray:100; stroke-dashoffset:100; }
   .in .blog .scribble path { animation:draw 1.4s .4s ease forwards; }
   .arrow { font-family:"Bricolage Grotesque"; font-weight:800; font-size:44px; }
   .arrow svg { display:block; }
@@ -443,7 +443,7 @@
           <p>The first time I made this pasta was the summer my aunt visited from Ohio. She had just bought a new car...</p>
         </div>
         <div class="popup">Get 10% off! Join our list!<br><span style="font-weight:400;color:#999">No thanks, I don't like food</span></div>
-        <svg class="scribble" viewBox="0 0 300 420" preserveAspectRatio="none"><path d="M20 40 L280 380 M280 40 L20 380" fill="none" stroke="#F0643C" stroke-width="9" stroke-linecap="round"/></svg>
+        <svg class="scribble" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet"><path pathLength="100" d="M26 26 L74 74 M74 26 L26 74" fill="none" stroke="#F0643C" stroke-width="5" stroke-linecap="round"/></svg>
       </div>
       <div class="arrow" aria-hidden="true">
         <svg width="70" height="40" viewBox="0 0 70 40"><path d="M4 22 C 20 10, 40 30, 60 18 M48 8 L62 18 L50 30" fill="none" stroke="#151515" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></svg>

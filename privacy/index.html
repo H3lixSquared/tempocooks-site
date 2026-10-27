@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tempo Privacy</title>
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<style>
+  @font-face { font-family:"Bricolage Grotesque"; font-weight:800; src:url("/fonts/BricolageGrotesque-ExtraBold.ttf"); }
+  @font-face { font-family:"IBM Plex Sans"; font-weight:600; src:url("/fonts/IBMPlexSans-SemiBold.ttf"); }
+  * { box-sizing:border-box; margin:0; }
+  body { min-height:100vh; padding:32px 16px; background:#EEEBE2; color:#151515; font-family:"IBM Plex Sans",system-ui,sans-serif; font-weight:600;
+         background-image:radial-gradient(#D6D2C6 1.3px, transparent 1.4px); background-size:20px 20px; }
+  .card { background:#fff; border:2.5px solid #151515; border-radius:20px; box-shadow:6px 6px 0 #151515; padding:28px 22px; max-width:680px; margin:0 auto; }
+  h1 { font-family:"Bricolage Grotesque"; font-weight:800; font-size:36px; line-height:1.05; letter-spacing:-.02em; margin-bottom:6px; }
+  h2 { font-family:"Bricolage Grotesque"; font-weight:800; font-size:21px; margin:26px 0 8px; }
+  p, li { color:#3F3C36; font-size:17px; line-height:1.55; }
+  p + p { margin-top:10px; }
+  ul { padding-left:22px; margin-top:6px; } li + li { margin-top:6px; }
+  .date { color:#8A867C; font-size:15px; }
+  a { color:#151515; }
+  .back { display:inline-block; margin-top:28px; font-family:"Bricolage Grotesque"; font-weight:800; font-size:17px; text-decoration:none;
+          background:#F7C94B; border:2.5px solid #151515; border-radius:999px; padding:9px 18px; box-shadow:3px 3px 0 #151515; }
+  .back:active { transform:translate(3px,3px); box-shadow:none; }
+</style></head>
+<body><div class="card">
+  <h1>Privacy</h1>
+  <p class="date">Last updated October 27, 2026</p>
+
+  <h2>The short version</h2>
+  <p>Tempo has no accounts, no ads, and no tracking. Your recipes and photos stay on your phone. We never sell anything about you.</p>
+
+  <h2>What stays on your phone</h2>
+  <ul>
+    <li>Your saved recipes, cooking history, ratings, and settings.</li>
+    <li>Photos of your finished dishes.</li>
+    <li>Screenshots you import. Tempo reads them on your phone with Apple's built-in text reader.</li>
+  </ul>
+
+  <h2>What Tempo sends, and why</h2>
+  <ul>
+    <li><b>Recipe text, to plan your cook.</b> When you import a recipe, its ingredients and steps go to our server, which asks an AI service (OpenAI) to label each step so Tempo can put them in the best order. The AI never gets your name or anything about you.</li>
+    <li><b>Recipe links and counts.</b> When you import, cook, or rate a recipe from a website, Tempo shares the link, title, and a count so we can show popular recipes. You can turn this off in Settings, under Sharing.</li>
+    <li><b>Ratings and notes.</b> If you rate a recipe or leave a note after cooking, it is saved without your name. You can turn this off in Settings, under Sharing.</li>
+    <li><b>Bug reports you send.</b> If you tap "Something wrong? Tell us", Tempo sends your message, the recipe and step you were on, your app version, and your phone model and iOS version.</li>
+    <li><b>Cooking together.</b> When you cook with someone on another phone, Tempo shares the recipe and each person's progress through a short join code. These sessions expire after 12 hours.</li>
+  </ul>
+  <p>None of this is tied to your name, email, or Apple ID, because Tempo never asks for them.</p>
+
+  <h2>Permissions</h2>
+  <ul>
+    <li><b>Camera:</b> only to snap a photo of your finished dish.</li>
+    <li><b>Photos:</b> only the recipe screenshots you pick.</li>
+    <li><b>Notifications and alarms:</b> only for your cooking timers and the reminders you turn on.</li>
+  </ul>
+
+  <h2>Who handles the data</h2>
+  <p>Our server runs on Supabase. Step labels come from OpenAI. Neither may use Tempo data to advertise to you.</p>
+
+  <h2>Kids</h2>
+  <p>Tempo is not made for children under 13, and we don't knowingly collect anything from them.</p>
+
+  <h2>Deleting your data</h2>
+  <p>Deleting the app deletes everything on your phone. To remove a rating, note, or bug report you sent, email us and tell us roughly when you sent it.</p>
+
+  <h2>Changes</h2>
+  <p>If this policy changes, we'll update the date at the top of this page.</p>
+
+  <h2>Contact</h2>
+  <p><!-- TODO(Bryce): set up a real address before publishing --><a href="mailto:support@tempocooks.com">support@tempocooks.com</a></p>
+  <a class="back" href="/">Back to Tempo</a>
+</div></body></html>
